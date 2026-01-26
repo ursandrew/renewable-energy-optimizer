@@ -134,30 +134,46 @@ with st.sidebar:
     # ========================================================================
     # BESS CONFIGURATION
     # ========================================================================
+    # ========================================================================
+    # BESS CONFIGURATION - UPDATED FOR YOUR OPTIMIZATION CODE
+    # ========================================================================
     with st.expander("🔋 BATTERY STORAGE"):
         st.subheader("Power Range")
         col1, col2 = st.columns(2)
         with col1:
-            bess_min = st.number_input("Min (MW)", value=5.0, min_value=0.0, step=1.0, key="bess_min")
+            bess_min = st.number_input("Min Power (MW)", value=5.0, min_value=0.0, step=1.0, key="bess_min")
         with col2:
-            bess_max = st.number_input("Max (MW)", value=20.0, min_value=0.0, step=1.0, key="bess_max")
+            bess_max = st.number_input("Max Power (MW)", value=20.0, min_value=0.0, step=1.0, key="bess_max")
         bess_step = st.number_input("Step (MW)", value=1.0, min_value=0.1, step=0.1, key="bess_step")
         
         st.subheader("Storage Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            bess_duration = st.number_input("Duration (hours)", value=4.0, min_value=0.5, step=0.5, key="bess_dur")
-            bess_efficiency = st.number_input("Efficiency (%)", value=90, min_value=50, max_value=100, key="bess_eff")
+            bess_duration = st.number_input("Duration (hours)", value=4.0, min_value=0.5, step=0.5, key="bess_dur", 
+                                           help="Energy capacity = Power × Duration")
+            bess_min_soc = st.number_input("Min SOC (%)", value=20, min_value=0, max_value=100, key="bess_min_soc",
+                                          help="Minimum State of Charge - Usually 20%")
+            bess_charge_eff = st.number_input("Charging Efficiency (%)", value=95, min_value=50, max_value=100, key="bess_charge_eff",
+                                             help="Energy efficiency when charging")
         with col2:
-            bess_dod = st.number_input("DoD (%)", value=80, min_value=50, max_value=100, key="bess_dod")
-            bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
+            bess_lifetime = st.number_input("Lifetime (years)", value=15, min_value=1, max_value=30, step=1, key="bess_life")
+            bess_max_soc = st.number_input("Max SOC (%)", value=100, min_value=0, max_value=100, key="bess_max_soc",
+                                          help="Maximum State of Charge - Usually 100%")
+            bess_discharge_eff = st.number_input("Discharging Efficiency (%)", value=95, min_value=50, max_value=100, key="bess_discharge_eff",
+                                                help="Energy efficiency when discharging")
         
         st.subheader("Financial Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            bess_capex = st.number_input("CapEx ($/kWh)", value=200, step=10, key="bess_capex")
+            bess_power_capex = st.number_input("Power CapEx ($/kW)", value=300, step=10, key="bess_power_capex",
+                                              help="Capital cost for power capacity (inverter, etc)")
+            bess_energy_capex = st.number_input("Energy CapEx ($/kWh)", value=200, step=10, key="bess_energy_capex",
+                                               help="Capital cost for energy storage (battery cells)")
         with col2:
-            bess_opex = st.number_input("OpEx ($/kWh/yr)", value=2, step=1, key="bess_opex")
+            bess_opex = st.number_input("OpEx ($/kWh/yr)", value=2, step=1, key="bess_opex",
+                                       help="Annual operating & maintenance cost")
+            bess_replacement_cost = st.number_input("Replacement Cost (%)", value=80, min_value=0, max_value=100, key="bess_replacement",
+                                                   help="Replacement cost as % of original capital cost")
     
     # ========================================================================
     # FINANCIAL CONFIGURATION
@@ -552,4 +568,5 @@ st.markdown("""
     <p>Renewable Energy Optimization Tool v1.0</p>
     <p>Developed for Hybrid System Design | PV + Wind + Hydro + BESS</p>
 </div>
+
 """, unsafe_allow_html=True)
