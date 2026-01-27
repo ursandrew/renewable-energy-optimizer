@@ -75,7 +75,7 @@ def build_input_excel_from_streamlit(
         # Wind sheet
         wind_data = {
             'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
-                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
+                         'Step Size (MW)', 'CAPEX ($/kW)', 'OPEX ($/kW/year)',
                          'Lifetime (years)', 'LCOE ($/MWh)', 'Hub Height (m)',
                          'Derating Factor (%)'],
             'Value': [wind_min, wind_min, wind_max, wind_step, wind_capex, wind_opex,
@@ -86,7 +86,7 @@ def build_input_excel_from_streamlit(
         # Hydro sheet
         hydro_data = {
             'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
-                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
+                         'Step Size (MW)', 'CAPEX ($/kW)', 'OPEX ($/kW/year)',
                          'Lifetime (years)', 'LCOE ($/MWh)', 'Operating Window - Min Hours',
                          'Operating Window - Max Hours', 'Operating Window - Step',
                          'Optimize Operating Window'],
@@ -100,7 +100,7 @@ def build_input_excel_from_streamlit(
             'Parameter': ['Initial Power (MW)', 'Min Power (MW)', 'Max Power (MW)',
                          'Step Size (MW)', 'Duration (hours)', 'Min SOC (%)', 'Max SOC (%)',
                          'Charging Efficiency (%)', 'Discharging Efficiency (%)',
-                         'Power CapEx ($/kW)', 'Energy CapEx ($/kWh)', 'OpEx ($/kWh/year)',
+                         'Power CAPEX ($/kW)', 'Energy CAPEX ($/kWh)', 'OPEX ($/kWh/year)',
                          'Lifetime (years)', 'Replacement Cost (%)'],
             'Value': [bess_min, bess_min, bess_max, bess_step, bess_duration,
                      bess_min_soc, bess_max_soc, bess_charge_eff, bess_discharge_eff,
@@ -189,8 +189,8 @@ with st.sidebar:
         st.subheader("Financial Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            pv_capex = st.number_input("CapEx ($/kW)", value=1000, step=10, key="pv_capex")
-            pv_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="pv_opex")
+            pv_capex = st.number_input("CAPEX ($/kW)", value=1000, step=10, key="pv_capex")
+            pv_opex = st.number_input("OPEX ($/kW/yr)", value=10, step=1, key="pv_opex")
         with col2:
             pv_lifetime = st.number_input("Lifetime (years)", value=25, step=1, key="pv_life")
             pv_lcoe = st.number_input("LCOE ($/MWh)", value=35.0, step=1.0, key="pv_lcoe")
@@ -210,8 +210,8 @@ with st.sidebar:
         st.subheader("Financial Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            wind_capex = st.number_input("CapEx ($/kW)", value=1200, step=10, key="wind_capex")
-            wind_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="wind_opex")
+            wind_capex = st.number_input("CAPEX ($/kW)", value=1200, step=10, key="wind_capex")
+            wind_opex = st.number_input("OPEX ($/kW/yr)", value=15, step=1, key="wind_opex")
         with col2:
             wind_lifetime = st.number_input("Lifetime (years)", value=20, step=1, key="wind_life")
             wind_lcoe = st.number_input("LCOE ($/MWh)", value=45.0, step=1.0, key="wind_lcoe")
@@ -238,8 +238,8 @@ with st.sidebar:
         st.subheader("Financial Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            hydro_capex = st.number_input("CapEx ($/kW)", value=2000, step=10, key="hydro_capex")
-            hydro_opex = st.number_input("OpEx ($/kW/yr)", value=20, step=1, key="hydro_opex")
+            hydro_capex = st.number_input("CAPEX ($/kW)", value=2000, step=10, key="hydro_capex")
+            hydro_opex = st.number_input("OPEX ($/kW/yr)", value=20, step=1, key="hydro_opex")
         with col2:
             hydro_lifetime = st.number_input("Lifetime (years)", value=50, step=1, key="hydro_life")
             hydro_lcoe = st.number_input("LCOE ($/MWh)", value=40.0, step=1.0, key="hydro_lcoe")
@@ -278,12 +278,12 @@ with st.sidebar:
         st.subheader("Financial Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            bess_power_capex = st.number_input("Power CapEx ($/kW)", value=300, step=10, key="bess_power_capex",
+            bess_power_capex = st.number_input("Power CAPEX ($/kW)", value=300, step=10, key="bess_power_capex",
                                               help="Capital cost for power capacity (inverter, etc)")
-            bess_energy_capex = st.number_input("Energy CapEx ($/kWh)", value=200, step=10, key="bess_energy_capex",
+            bess_energy_capex = st.number_input("Energy CAPEX ($/kWh)", value=200, step=10, key="bess_energy_capex",
                                                help="Capital cost for energy storage (battery cells)")
         with col2:
-            bess_opex = st.number_input("OpEx ($/kWh/yr)", value=2, step=1, key="bess_opex",
+            bess_opex = st.number_input("OPEX ($/kWh/yr)", value=2, step=1, key="bess_opex",
                                        help="Annual operating & maintenance cost")
             bess_replacement_cost = st.number_input("Replacement Cost (%)", value=80, min_value=0, max_value=100, key="bess_replacement",
                                                    help="Replacement cost as % of original capital cost")
@@ -777,4 +777,5 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
