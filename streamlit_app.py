@@ -264,7 +264,7 @@ with st.sidebar:
     # hydro_window_max = ...  # DELETE
     
         st.subheader("Financial Parameters")
-         col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
         with col1:
             hydro_capex = st.number_input("CapEx ($/kW)", value=2000, step=10, key="hydro_capex")
             hydro_opex = st.number_input("OpEx ($/kW/yr)", value=20, step=1, key="hydro_opex")
@@ -826,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
