@@ -106,7 +106,7 @@ def build_input_excel_from_streamlit(
             'Value': [hydro_min, hydro_min, hydro_max, hydro_step, 
                      hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
                      hydro_hours_per_day]  # <-- Pass this from sidebar!
-}
+        }
         
         # BESS sheet
         bess_data = {
@@ -830,6 +830,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
