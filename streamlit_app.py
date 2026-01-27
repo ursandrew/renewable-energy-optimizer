@@ -395,7 +395,7 @@ with st.sidebar:
             "Target Unmet Load (%)", 
             value=0.0, 
             min_value=0.0, 
-            max_value=5.0, 
+            max_value=15.0, 
             step=0.1,
             key="target_unmet",
             help="0% = 100% reliable system"
@@ -746,4 +746,5 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
+
 
