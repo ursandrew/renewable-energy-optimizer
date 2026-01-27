@@ -12,7 +12,120 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import io
+import sys
+import os
+from io import BytesIO
 
+# Try to import optimization code
+try:
+    from optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB import (
+        read_inputs,
+        grid_search_optimize_hydro,
+        find_optimal_solution
+    )
+    OPTIMIZATION_AVAILABLE = True
+except ImportError:
+    OPTIMIZATION_AVAILABLE = False
+def build_input_excel_from_streamlit(
+    simulation_hours, target_unmet_percent, discount_rate, inflation_rate, project_lifetime,
+    pv_min, pv_max, pv_step, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
+    wind_min, wind_max, wind_step, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
+    hydro_min, hydro_max, hydro_step, hydro_window_min, hydro_window_max, 
+    hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
+    bess_min, bess_max, bess_step, bess_duration, bess_min_soc, bess_max_soc,
+    bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
+    bess_opex, bess_lifetime, bess_replacement_cost,
+    load_profile_df, pv_profile_df, wind_profile_df, hydro_profile_df=None
+):
+    """Build complete Excel input file from Streamlit parameters."""
+    
+    output = BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        
+        # Configuration sheet
+        config_data = {
+            'Parameter': ['Simulation Hours', 'Target Unmet Load (%)', 'Optimization Method',
+                         'Discount Rate (%)', 'Inflation Rate (%)', 'Project Lifetime (years)',
+                         'Use Dynamic LCOE'],
+            'Value': [simulation_hours, target_unmet_percent, 'GRID_SEARCH',
+                     discount_rate, inflation_rate, project_lifetime, 'NO']
+        }
+        pd.DataFrame(config_data).to_excel(writer, sheet_name='Configuration', index=False)
+        
+        # Grid Search Config sheet
+        grid_config_data = {
+            'Component': ['PV', 'Wind', 'Hydro', 'BESS'],
+            'Min_Capacity': [pv_min, wind_min, hydro_min, bess_min],
+            'Max_Capacity': [pv_max, wind_max, hydro_max, bess_max],
+            'Step_Size': [pv_step, wind_step, hydro_step, bess_step]
+        }
+        pd.DataFrame(grid_config_data).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
+        
+        # Solar_PV sheet
+        solar_data = {
+            'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
+                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
+                         'Lifetime (years)', 'LCOE ($/MWh)', 'Derating Factor (%)'],
+            'Value': [pv_min, pv_min, pv_max, pv_step, pv_capex, pv_opex,
+                     pv_lifetime, pv_lcoe, 100]
+        }
+        pd.DataFrame(solar_data).to_excel(writer, sheet_name='Solar_PV', index=False)
+        
+        # Wind sheet
+        wind_data = {
+            'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
+                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
+                         'Lifetime (years)', 'LCOE ($/MWh)', 'Hub Height (m)',
+                         'Derating Factor (%)'],
+            'Value': [wind_min, wind_min, wind_max, wind_step, wind_capex, wind_opex,
+                     wind_lifetime, wind_lcoe, 80, 100]
+        }
+        pd.DataFrame(wind_data).to_excel(writer, sheet_name='Wind', index=False)
+        
+        # Hydro sheet
+        hydro_data = {
+            'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
+                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
+                         'Lifetime (years)', 'LCOE ($/MWh)', 'Operating Window - Min Hours',
+                         'Operating Window - Max Hours', 'Operating Window - Step',
+                         'Optimize Operating Window'],
+            'Value': [hydro_min, hydro_min, hydro_max, hydro_step, hydro_capex, hydro_opex,
+                     hydro_lifetime, hydro_lcoe, hydro_window_min, hydro_window_max, 1, 'YES']
+        }
+        pd.DataFrame(hydro_data).to_excel(writer, sheet_name='Hydro', index=False)
+        
+        # BESS sheet
+        bess_data = {
+            'Parameter': ['Initial Power (MW)', 'Min Power (MW)', 'Max Power (MW)',
+                         'Step Size (MW)', 'Duration (hours)', 'Min SOC (%)', 'Max SOC (%)',
+                         'Charging Efficiency (%)', 'Discharging Efficiency (%)',
+                         'Power CapEx ($/kW)', 'Energy CapEx ($/kWh)', 'OpEx ($/kWh/year)',
+                         'Lifetime (years)', 'Replacement Cost (%)'],
+            'Value': [bess_min, bess_min, bess_max, bess_step, bess_duration,
+                     bess_min_soc, bess_max_soc, bess_charge_eff, bess_discharge_eff,
+                     bess_power_capex, bess_energy_capex, bess_opex,
+                     bess_lifetime, bess_replacement_cost]
+        }
+        pd.DataFrame(bess_data).to_excel(writer, sheet_name='BESS', index=False)
+        
+        # Profile sheets
+        load_profile_df.to_excel(writer, sheet_name='Load_Profile', index=False)
+        pv_profile_df.to_excel(writer, sheet_name='PVsyst_Profile', index=False)
+        wind_profile_df.to_excel(writer, sheet_name='Wind_Profile', index=False)
+        
+        # Hydro profile
+        if hydro_profile_df is not None:
+            hydro_profile_df.to_excel(writer, sheet_name='Hydro_Profile', index=False)
+        else:
+            default_hydro = pd.DataFrame({
+                'Hour': range(8760),
+                'Output_kW': [1.0] * 8760
+            })
+            default_hydro.to_excel(writer, sheet_name='Hydro_Profile', index=False)
+    
+    output.seek(0)
+    return output
 # Page configuration
 st.set_page_config(
     page_title="RE Optimization Tool",
@@ -307,44 +420,138 @@ with tab2:
     # Optimization button
     if st.button("▶️ RUN OPTIMIZATION", type="primary", disabled=not validation_passed, use_container_width=True):
         
-        # Create placeholder for progress
-        progress_container = st.container()
-        with progress_container:
-            st.subheader("🔄 Optimization in Progress...")
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            # Simulate optimization (replace with actual code)
-            import time
-            for i in range(100):
-                progress_bar.progress(i + 1)
-                status_text.text(f"Testing combination {int((i+1)*total_combinations/100):,} of {total_combinations:,}...")
-                time.sleep(0.02)  # Remove this in production
-            
-            # Store mock results (replace with actual optimization results)
-            st.session_state.results = {
-                'pv_capacity': 8.0,
-                'wind_capacity': 2.0,
-                'hydro_capacity': 1.0,
-                'hydro_window_start': 12,
-                'hydro_window_end': 18,
-                'bess_power': 15.0,
-                'bess_energy': 60.0,
-                'npc': 23500000,
-                'lcoe': 45.50,
-                'unmet_pct': 0.0,
-                'firm_capacity': 1.312,
-                're_penetration': 100.0,
-                'pv_npc': 8500000,
-                'wind_npc': 4200000,
-                'hydro_npc': 2800000,
-                'bess_npc': 8000000,
-            }
-            st.session_state.optimization_complete = True
-        
-        st.success("✅ Optimization Complete!")
-        st.balloons()
-        st.info("👉 Go to **Results** tab to view optimal configuration")
+        if not OPTIMIZATION_AVAILABLE:
+            st.error("❌ Optimization code not available. Please check GitHub repository.")
+        else:
+            try:
+                st.subheader("🔄 Optimization in Progress...")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                # Read uploaded profiles
+                status_text.text("📊 Reading uploaded profiles...")
+                progress_bar.progress(10)
+                
+                # Load profile
+                if load_file.name.endswith('.csv'):
+                    load_df = pd.read_csv(load_file)
+                else:
+                    load_df = pd.read_excel(load_file)
+                
+                # PV profile
+                if pv_file.name.endswith('.csv'):
+                    pv_df = pd.read_csv(pv_file)
+                else:
+                    pv_df = pd.read_excel(pv_file)
+                
+                # Wind profile
+                if wind_file.name.endswith('.csv'):
+                    wind_df = pd.read_csv(wind_file)
+                else:
+                    wind_df = pd.read_excel(wind_file)
+                
+                # Hydro profile (optional)
+                hydro_df = None
+                if 'hydro_file' in locals() and hydro_file is not None:
+                    if hydro_file.name.endswith('.csv'):
+                        hydro_df = pd.read_csv(hydro_file)
+                    else:
+                        hydro_df = pd.read_excel(hydro_file)
+                
+                # Build Excel from parameters
+                status_text.text("🔨 Building input file from your parameters...")
+                progress_bar.progress(15)
+                
+                excel_bytes = build_input_excel_from_streamlit(
+                    8760, 0, discount_rate, inflation_rate, project_lifetime,
+                    pv_min, pv_max, pv_step, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
+                    wind_min, wind_max, wind_step, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
+                    hydro_min, hydro_max, hydro_step, hydro_window_min, hydro_window_max,
+                    hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
+                    bess_min, bess_max, bess_step, bess_duration, bess_min_soc, bess_max_soc,
+                    bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
+                    bess_opex, bess_lifetime, bess_replacement_cost,
+                    load_df, pv_df, wind_df, hydro_df
+                )
+                
+                # Save temp file
+                temp_file = "temp_input_generated.xlsx"
+                with open(temp_file, "wb") as f:
+                    f.write(excel_bytes.getvalue())
+                
+                # Run optimization
+                status_text.text("⚙️ Loading optimization engine...")
+                progress_bar.progress(25)
+                
+                import optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB as opt_module
+                opt_module.INPUT_FILE = temp_file
+                
+                status_text.text("📖 Reading configuration...")
+                progress_bar.progress(30)
+                
+                result = opt_module.read_inputs()
+                if len(result) == 9:
+                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
+                    hydro_profile_opt = None
+                else:
+                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile, hydro_profile_opt = result
+                
+                status_text.text("🔍 Running grid search optimization... (this may take several minutes)")
+                progress_bar.progress(35)
+                
+                results_df = opt_module.grid_search_optimize_hydro(
+                    config, grid_config, solar, wind, hydro, bess,
+                    load_profile, pvsyst_profile, wind_profile, hydro_profile_opt,
+                    lcoe_tables=None
+                )
+                
+                progress_bar.progress(85)
+                status_text.text("🎯 Finding optimal solution...")
+                
+                optimal = opt_module.find_optimal_solution(results_df)
+                
+                progress_bar.progress(100)
+                status_text.text("✅ Complete!")
+                
+                # Clean up
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                
+                if optimal is not None:
+                    st.session_state.results = {
+                        'pv_capacity': optimal['PV_kW'] / 1000,
+                        'wind_capacity': optimal['Wind_kW'] / 1000,
+                        'hydro_capacity': optimal['Hydro_kW'] / 1000,
+                        'hydro_window_start': optimal['Hydro_Window_Start'],
+                        'hydro_window_end': optimal['Hydro_Window_End'],
+                        'bess_power': optimal['BESS_Power_kW'] / 1000,
+                        'bess_energy': optimal['BESS_Capacity_kWh'] / 1000,
+                        'npc': optimal['NPC_$'],
+                        'lcoe': optimal['LCOE_$/MWh'],
+                        'unmet_pct': optimal['Unmet_%'],
+                        'firm_capacity': optimal.get('Firm_Capacity_MW', 0),
+                        're_penetration': optimal.get('RE_Penetration_%', 100),
+                        'pv_npc': optimal.get('PV_NPC_$', 0),
+                        'wind_npc': optimal.get('Wind_NPC_$', 0),
+                        'hydro_npc': optimal.get('Hydro_NPC_$', 0),
+                        'bess_npc': optimal.get('BESS_NPC_$', 0),
+                        'results_df': results_df
+                    }
+                    st.session_state.optimization_complete = True
+                    
+                    st.success("✅ Optimization Complete!")
+                    st.balloons()
+                    st.info("👉 Go to **Results** tab to view optimal configuration")
+                else:
+                    st.error("❌ No optimal solution found. Check your parameters.")
+                    
+            except Exception as e:
+                st.error(f"❌ Error during optimization: {str(e)}")
+                st.exception(e)
+                
+                # Clean up
+                if os.path.exists("temp_input_generated.xlsx"):
+                    os.remove("temp_input_generated.xlsx")
 
 # ============================================================================
 # TAB 3: RESULTS
@@ -570,3 +777,4 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
