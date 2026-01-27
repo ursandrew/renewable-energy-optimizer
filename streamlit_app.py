@@ -27,15 +27,29 @@ try:
 except ImportError:
     OPTIMIZATION_AVAILABLE = False
 def build_input_excel_from_streamlit(
-    simulation_hours, target_unmet_percent, discount_rate, inflation_rate, project_lifetime,
+    # Configuration
+    simulation_hours, 
+    target_unmet_percent,  # <-- CRITICAL
+    discount_rate, 
+    inflation_rate, 
+    project_lifetime,
+    # PV
     pv_min, pv_max, pv_step, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
+    # Wind
     wind_min, wind_max, wind_step, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
-    hydro_min, hydro_max, hydro_step, hydro_window_min, hydro_window_max, 
+    # Hydro
+    hydro_min, hydro_max, hydro_step, 
+    hydro_hours_per_day,  # <-- CHANGED from hydro_window_min, hydro_window_max
     hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
+    # BESS
     bess_min, bess_max, bess_step, bess_duration, bess_min_soc, bess_max_soc,
     bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
     bess_opex, bess_lifetime, bess_replacement_cost,
-    load_profile_df, pv_profile_df, wind_profile_df, hydro_profile_df=None
+    # Profiles
+    load_profile_df, 
+    pv_profile_df, 
+    wind_profile_df, 
+    hydro_profile_df=None
 ):
     """Build complete Excel input file from Streamlit parameters."""
     
@@ -83,17 +97,16 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(wind_data).to_excel(writer, sheet_name='Wind', index=False)
         
-        # Hydro sheet
-        hydro_data = {
+       # Hydro sheet
+       hydro_data = {
             'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
-                         'Step Size (MW)', 'CAPEX ($/kW)', 'OPEX ($/kW/year)',
-                         'Lifetime (years)', 'LCOE ($/MWh)', 'Operating Window - Min Hours',
-                         'Operating Window - Max Hours', 'Operating Window - Step',
-                         'Optimize Operating Window'],
-            'Value': [hydro_min, hydro_min, hydro_max, hydro_step, hydro_capex, hydro_opex,
-                     hydro_lifetime, hydro_lcoe, hydro_window_min, hydro_window_max, 1, 'YES']
-        }
-        pd.DataFrame(hydro_data).to_excel(writer, sheet_name='Hydro', index=False)
+                          'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
+                          'Lifetime (years)', 'LCOE ($/MWh)', 
+                           'Operating Hours'],  # <-- THIS IS THE KEY PARAMETER!
+            'Value': [hydro_min, hydro_min, hydro_max, hydro_step, 
+                     hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
+                     hydro_hours_per_day]  # <-- Pass this from sidebar!
+}
         
         # BESS sheet
         bess_data = {
@@ -161,7 +174,7 @@ st.markdown("""
 
 # Title
 st.markdown('<p class="main-header">🌞 Renewable Energy Optimization Tool</p>', unsafe_allow_html=True)
-st.markdown("**Hybrid System Designer: PV + Wind + Hydro + Battery Storage**")
+st.markdown("**Hybrid System Design: PV + Wind + Hydro + Battery Storage**")
 st.markdown("---")
 
 # Initialize session state
@@ -216,33 +229,48 @@ with st.sidebar:
             wind_lifetime = st.number_input("Lifetime (years)", value=20, step=1, key="wind_life")
             wind_lcoe = st.number_input("LCOE ($/MWh)", value=45.0, step=1.0, key="wind_lcoe")
     
-    # ========================================================================
-    # HYDRO CONFIGURATION
-    # ========================================================================
-    with st.expander("💧 HYDRO"):
-        st.subheader("Capacity Range")
-        col1, col2 = st.columns(2)
-        with col1:
-            hydro_min = st.number_input("Min (MW)", value=0.0, min_value=0.0, step=0.5, key="hydro_min")
-        with col2:
-            hydro_max = st.number_input("Max (MW)", value=2.0, min_value=0.0, step=0.5, key="hydro_max")
-        hydro_step = st.number_input("Step (MW)", value=0.5, min_value=0.1, step=0.1, key="hydro_step")
-        
-        st.subheader("Operating Window")
-        col1, col2 = st.columns(2)
-        with col1:
-            hydro_window_min = st.number_input("Min Hours/Day", value=4, min_value=1, max_value=24, key="hydro_win_min")
-        with col2:
-            hydro_window_max = st.number_input("Max Hours/Day", value=8, min_value=1, max_value=24, key="hydro_win_max")
-        
-        st.subheader("Financial Parameters")
-        col1, col2 = st.columns(2)
-        with col1:
-            hydro_capex = st.number_input("CAPEX ($/kW)", value=2000, step=10, key="hydro_capex")
-            hydro_opex = st.number_input("OPEX ($/kW/yr)", value=20, step=1, key="hydro_opex")
-        with col2:
-            hydro_lifetime = st.number_input("Lifetime (years)", value=50, step=1, key="hydro_life")
-            hydro_lcoe = st.number_input("LCOE ($/MWh)", value=40.0, step=1.0, key="hydro_lcoe")
+   # ========================================================================
+# HYDRO CONFIGURATION
+# ========================================================================
+with st.expander("💧 HYDRO"):
+    st.subheader("Capacity Range")
+    col1, col2 = st.columns(2)
+    with col1:
+        hydro_min = st.number_input("Min (MW)", value=0.0, min_value=0.0, step=0.5, key="hydro_min")
+    with col2:
+        hydro_max = st.number_input("Max (MW)", value=2.0, min_value=0.0, step=0.5, key="hydro_max")
+    hydro_step = st.number_input("Step (MW)", value=0.5, min_value=0.1, step=0.1, key="hydro_step")
+    
+    # ADD THIS SECTION:
+    st.subheader("Operating Configuration")
+    hydro_hours_per_day = st.number_input(
+        "Operating Hours (hours/day)", 
+        value=6, 
+        min_value=1, 
+        max_value=24, 
+        step=1,
+        key="hydro_hours",
+        help="How many consecutive hours per day should hydro operate? System will auto-optimize the time window."
+    )
+    
+    st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
+    
+    # Example windows
+    if hydro_hours_per_day < 24:
+        st.caption(f"Example windows to test: 00:00-{hydro_hours_per_day:02d}:00, 01:00-{hydro_hours_per_day+1:02d}:00, etc.")
+    
+    # REMOVE these old parameters (if they exist):
+    # hydro_window_min = ...  # DELETE
+    # hydro_window_max = ...  # DELETE
+    
+    st.subheader("Financial Parameters")
+    col1, col2 = st.columns(2)
+    with col1:
+        hydro_capex = st.number_input("CapEx ($/kW)", value=2000, step=10, key="hydro_capex")
+        hydro_opex = st.number_input("OpEx ($/kW/yr)", value=20, step=1, key="hydro_opex")
+    with col2:
+        hydro_lifetime = st.number_input("Lifetime (years)", value=50, step=1, key="hydro_life")
+        hydro_lcoe = st.number_input("LCOE ($/MWh)", value=40.0, step=1.0, key="hydro_lcoe")
     
     # ========================================================================
     # BESS CONFIGURATION
@@ -295,7 +323,25 @@ with st.sidebar:
         discount_rate = st.number_input("Discount Rate (%)", value=8.0, min_value=0.0, max_value=20.0, step=0.5)
         inflation_rate = st.number_input("Inflation Rate (%)", value=2.0, min_value=0.0, max_value=10.0, step=0.5)
         project_lifetime = st.number_input("Project Lifetime (years)", value=25, min_value=1, max_value=50, step=1)
+    # ========================================================================
+    # OPTIMIZATION CONFIGURATION
+    # ========================================================================
+    with st.expander("🎯 OPTIMIZATION SETTINGS"):
+    st.subheader("Reliability Target")
+    target_unmet_percent = st.number_input(
+        "Target Unmet Load (%)", 
+        value=0.0, 
+        min_value=0.0, 
+        max_value=5.0, 
+        step=0.1,
+        key="target_unmet",
+        help="Maximum acceptable unmet load. 0% = 100% reliable system"
+    )
     
+    if target_unmet_percent == 0.0:
+        st.info("🎯 Target: 100% reliable system (no unmet load)")
+    else:
+        st.info(f"🎯 Target: ≥{100-target_unmet_percent:.1f}% reliability")
     # ========================================================================
     # FILE UPLOADS
     # ========================================================================
@@ -324,7 +370,7 @@ with tab1:
     - **Multi-source optimization:** Solar PV + Wind + Hydro + Battery Storage
     - **Grid search algorithm:** Tests all combinations to find global optimum
     - **Firm capacity analysis:** Identifies systems with 100% reliability
-    - **HOMER-style NPC calculation:** Industry-standard financial analysis
+    - **NPC calculation:** Industry-standard financial analysis
     - **Hourly dispatch:** Complete 8760-hour simulation
     - **Interactive visualization:** Charts and graphs for easy understanding
     
@@ -463,16 +509,23 @@ with tab2:
                 progress_bar.progress(15)
                 
                 excel_bytes = build_input_excel_from_streamlit(
-                    8760, 0, discount_rate, inflation_rate, project_lifetime,
+                    8760, 
+                    target_unmet_percent,  # <-- Use sidebar value, not hardcoded 0
+                    discount_rate, 
+                    inflation_rate, 
+                    project_lifetime,
                     pv_min, pv_max, pv_step, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
                     wind_min, wind_max, wind_step, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
-                    hydro_min, hydro_max, hydro_step, hydro_window_min, hydro_window_max,
+                    hydro_min, hydro_max, hydro_step, 
+                    hydro_hours_per_day,  # <-- Pass this instead of window_min/max
                     hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
                     bess_min, bess_max, bess_step, bess_duration, bess_min_soc, bess_max_soc,
                     bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
                     bess_opex, bess_lifetime, bess_replacement_cost,
                     load_df, pv_df, wind_df, hydro_df
-                )
+)
+)
+)
                 
                 # Save temp file
                 temp_file = "temp_input_generated.xlsx"
@@ -777,5 +830,6 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
