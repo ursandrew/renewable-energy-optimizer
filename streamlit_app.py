@@ -98,15 +98,15 @@ def build_input_excel_from_streamlit(
         pd.DataFrame(wind_data).to_excel(writer, sheet_name='Wind', index=False)
         
        # Hydro sheet
-       hydro_data = {
+        hydro_data = {
             'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
-                          'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
-                          'Lifetime (years)', 'LCOE ($/MWh)', 
-                           'Operating Hours'],  # <-- THIS IS THE KEY PARAMETER!
+                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
+                         'Lifetime (years)', 'LCOE ($/MWh)', 'Operating Hours'],
             'Value': [hydro_min, hydro_min, hydro_max, hydro_step, 
                      hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
-                     hydro_hours_per_day]  # <-- Pass this from sidebar!
-         }
+                     hydro_hours_per_day]
+        }
+        pd.DataFrame(hydro_data).to_excel(writer, sheet_name='Hydro', index=False)
         
         # BESS sheet
         bess_data = {
@@ -830,6 +830,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
