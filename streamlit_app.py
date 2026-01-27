@@ -548,6 +548,12 @@ with tab2:
                 import optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB as opt_module
                 opt_module.INPUT_FILE = temp_file
                 
+                status_text.text("⚙️ Loading optimization engine...")
+                progress_bar.progress(25)
+                
+                import optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB as opt_module
+                opt_module.INPUT_FILE = temp_file
+                
                 status_text.text("📖 Reading configuration...")
                 progress_bar.progress(30)
                 
@@ -839,6 +845,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
