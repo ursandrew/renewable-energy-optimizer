@@ -256,7 +256,7 @@ with st.sidebar:
        st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
     
     # Example windows
-      if hydro_hours_per_day < 24:
+       if hydro_hours_per_day < 24:
         st.caption(f"Example windows to test: 00:00-{hydro_hours_per_day:02d}:00, 01:00-{hydro_hours_per_day+1:02d}:00, etc.")
     
     # REMOVE these old parameters (if they exist):
@@ -826,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
