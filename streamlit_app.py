@@ -50,7 +50,9 @@ def build_input_excel_from_streamlit(
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
-        # Configuration sheet
+        # ====================================================================
+        # SHEET 1: Configuration
+        # ====================================================================
         config_data = {
             'Parameter': [
                 'Simulation Hours',
@@ -73,41 +75,44 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(config_data).to_excel(writer, sheet_name='Configuration', index=False)
         
-        # Grid Search Config sheet - CORRECTED
-     grid_config_data = {
-         'Parameter': [
-        'PV Search Start',
-        'PV Search End',
-        'PV Search Step',
-        'Wind Search Start',
-        'Wind Search End',
-        'Wind Search Step',
-        'Hydro Search Start',
-        'Hydro Search End',
-        'Hydro Search Step',
-        'BESS Search Start',
-        'BESS Search End',
-        'BESS Search Step'
-          ],
-    'Value': [
-        pv_min,
-        pv_max,
-        pv_step,
-        wind_min,
-        wind_max,
-        wind_step,
-        hydro_min,
-        hydro_max,
-        hydro_step,
-        bess_min,
-        bess_max,
-        bess_step
-          ]
-      }
+        # ====================================================================
+        # SHEET 2: Grid_Search_Config - CORRECTED
+        # ====================================================================
+        grid_config_data = {
+            'Parameter': [
+                'PV Search Start',
+                'PV Search End',
+                'PV Search Step',
+                'Wind Search Start',
+                'Wind Search End',
+                'Wind Search Step',
+                'Hydro Search Start',
+                'Hydro Search End',
+                'Hydro Search Step',
+                'BESS Search Start',
+                'BESS Search End',
+                'BESS Search Step'
+            ],
+            'Value': [
+                pv_min,
+                pv_max,
+                pv_step,
+                wind_min,
+                wind_max,
+                wind_step,
+                hydro_min,
+                hydro_max,
+                hydro_step,
+                bess_min,
+                bess_max,
+                bess_step
+            ]
         }
         pd.DataFrame(grid_config_data).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
         
-        # Solar_PV sheet - EXACT parameter names
+        # ====================================================================
+        # SHEET 3: Solar_PV
+        # ====================================================================
         solar_data = {
             'Parameter': [
                 'LCOE',
@@ -118,7 +123,7 @@ def build_input_excel_from_streamlit(
             ],
             'Value': [
                 pv_lcoe,
-                1.0,  # 1 kW baseline
+                1.0,
                 pv_capex,
                 pv_opex,
                 pv_lifetime
@@ -126,7 +131,9 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(solar_data).to_excel(writer, sheet_name='Solar_PV', index=False)
         
-        # Wind sheet - EXACT parameter names
+        # ====================================================================
+        # SHEET 4: Wind
+        # ====================================================================
         wind_data = {
             'Parameter': [
                 'Include Wind?',
@@ -145,7 +152,9 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(wind_data).to_excel(writer, sheet_name='Wind', index=False)
         
-        # Hydro sheet - EXACT parameter names
+        # ====================================================================
+        # SHEET 5: Hydro
+        # ====================================================================
         hydro_data = {
             'Parameter': [
                 'Include Hydro?',
@@ -166,7 +175,9 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(hydro_data).to_excel(writer, sheet_name='Hydro', index=False)
         
-        # BESS sheet - EXACT parameter names
+        # ====================================================================
+        # SHEET 6: BESS
+        # ====================================================================
         bess_data = {
             'Parameter': [
                 'Duration',
@@ -182,7 +193,7 @@ def build_input_excel_from_streamlit(
             ],
             'Value': [
                 bess_duration,
-                0,  # LCOS calculated internally
+                0,
                 bess_charge_eff,
                 bess_discharge_eff,
                 bess_min_soc,
@@ -195,12 +206,13 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(bess_data).to_excel(writer, sheet_name='BESS', index=False)
         
-        # Profile sheets
+        # ====================================================================
+        # SHEET 7-10: Profiles
+        # ====================================================================
         load_profile_df.to_excel(writer, sheet_name='Load_Profile', index=False)
         pv_profile_df.to_excel(writer, sheet_name='PVsyst_Profile', index=False)
         wind_profile_df.to_excel(writer, sheet_name='Wind_Profile', index=False)
         
-        # Hydro profile
         if hydro_profile_df is not None:
             hydro_profile_df.to_excel(writer, sheet_name='Hydro_Profile', index=False)
         else:
@@ -733,5 +745,3 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
-
-
