@@ -230,9 +230,9 @@ with st.sidebar:
             wind_lcoe = st.number_input("LCOE ($/MWh)", value=45.0, step=1.0, key="wind_lcoe")
     
    # ========================================================================
-# HYDRO CONFIGURATION
-# ========================================================================
-   with st.expander("💧 HYDRO"):
+   # HYDRO CONFIGURATION
+   # ========================================================================
+    with st.expander("💧 HYDRO"):
        st.subheader("Capacity Range")
        col1, col2 = st.columns(2)
        with col1:
@@ -826,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
