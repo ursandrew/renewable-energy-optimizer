@@ -103,7 +103,7 @@ def build_input_excel_from_streamlit(
         bess_max,
         bess_step
           ]
-          }
+      }
         }
         pd.DataFrame(grid_config_data).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
         
@@ -733,4 +733,5 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
+
 
