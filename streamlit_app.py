@@ -523,8 +523,8 @@ with tab2:
                     bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
                     bess_opex, bess_lifetime, bess_replacement_cost,
                     load_df, pv_df, wind_df, hydro_df
-)
-)
+
+                    )
 
                 
                 # Save temp file
@@ -830,6 +830,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
