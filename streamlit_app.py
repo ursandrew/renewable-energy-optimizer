@@ -76,7 +76,7 @@ def build_input_excel_from_streamlit(
         pd.DataFrame(config_data).to_excel(writer, sheet_name='Configuration', index=False)
         
         # ====================================================================
-        # SHEET 2: Grid_Search_Config - CORRECTED
+        # SHEET 2: Grid_Search_Config - FIXED WITH max_combinations
         # ====================================================================
         grid_config_data = {
             'Parameter': [
@@ -92,7 +92,7 @@ def build_input_excel_from_streamlit(
                 'BESS Search Start',
                 'BESS Search End',
                 'BESS Search Step',
-                'Max Combinations'
+                'max_combinations'
             ],
             'Value': [
                 pv_min,
@@ -604,8 +604,7 @@ with tab2:
                 
                 results_df = opt_module.grid_search_optimize_hydro(
                     config, grid_config, solar, wind, hydro, bess,
-                    load_profile, pvsyst_profile, wind_profile, hydro_profile_opt,
-                    lcoe_tables=None
+                    load_profile, pvsyst_profile, wind_profile, hydro_profile_opt
                 )
                 
                 progress_bar.progress(85)
@@ -747,5 +746,3 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
-
-
