@@ -232,28 +232,28 @@ with st.sidebar:
    # ========================================================================
 # HYDRO CONFIGURATION
 # ========================================================================
-with st.expander("💧 HYDRO"):
-    st.subheader("Capacity Range")
-    col1, col2 = st.columns(2)
-    with col1:
-        hydro_min = st.number_input("Min (MW)", value=0.0, min_value=0.0, step=0.5, key="hydro_min")
-    with col2:
-        hydro_max = st.number_input("Max (MW)", value=2.0, min_value=0.0, step=0.5, key="hydro_max")
-    hydro_step = st.number_input("Step (MW)", value=0.5, min_value=0.1, step=0.1, key="hydro_step")
+   with st.expander("💧 HYDRO"):
+       st.subheader("Capacity Range")
+       col1, col2 = st.columns(2)
+       with col1:
+          hydro_min = st.number_input("Min (MW)", value=0.0, min_value=0.0, step=0.5, key="hydro_min")
+       with col2:
+          hydro_max = st.number_input("Max (MW)", value=2.0, min_value=0.0, step=0.5, key="hydro_max")
+          hydro_step = st.number_input("Step (MW)", value=0.5, min_value=0.1, step=0.1, key="hydro_step")
     
     # ADD THIS SECTION:
-    st.subheader("Operating Configuration")
-    hydro_hours_per_day = st.number_input(
-        "Operating Hours (hours/day)", 
-        value=6, 
-        min_value=1, 
-        max_value=24, 
-        step=1,
-        key="hydro_hours",
-        help="How many consecutive hours per day should hydro operate? System will auto-optimize the time window."
+       st.subheader("Operating Configuration")
+          hydro_hours_per_day = st.number_input(
+            "Operating Hours (hours/day)", 
+            value=6, 
+            min_value=1, 
+            max_value=24, 
+            step=1,
+            key="hydro_hours",
+            help="How many consecutive hours per day should hydro operate? System will auto-optimize the time window."
     )
     
-    st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
+          st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
     
     # Example windows
     if hydro_hours_per_day < 24:
@@ -826,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
