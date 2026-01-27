@@ -91,7 +91,8 @@ def build_input_excel_from_streamlit(
                 'Hydro Search Step',
                 'BESS Search Start',
                 'BESS Search End',
-                'BESS Search Step'
+                'BESS Search Step',
+                'max_combinations'
             ],
             'Value': [
                 pv_min,
@@ -105,7 +106,8 @@ def build_input_excel_from_streamlit(
                 hydro_step,
                 bess_min,
                 bess_max,
-                bess_step
+                bess_step,
+                1000000
             ]
         }
         pd.DataFrame(grid_config_data).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
@@ -745,3 +747,4 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
+
