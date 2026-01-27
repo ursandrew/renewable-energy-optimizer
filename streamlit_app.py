@@ -73,12 +73,37 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(config_data).to_excel(writer, sheet_name='Configuration', index=False)
         
-        # Grid Search Config sheet
-        grid_config_data = {
-            'Component': ['PV', 'Wind', 'Hydro', 'BESS'],
-            'Min_Capacity': [pv_min, wind_min, hydro_min, bess_min],
-            'Max_Capacity': [pv_max, wind_max, hydro_max, bess_max],
-            'Step_Size': [pv_step, wind_step, hydro_step, bess_step]
+        # Grid Search Config sheet - CORRECTED
+     grid_config_data = {
+         'Parameter': [
+        'PV Search Start',
+        'PV Search End',
+        'PV Search Step',
+        'Wind Search Start',
+        'Wind Search End',
+        'Wind Search Step',
+        'Hydro Search Start',
+        'Hydro Search End',
+        'Hydro Search Step',
+        'BESS Search Start',
+        'BESS Search End',
+        'BESS Search Step'
+          ],
+    'Value': [
+        pv_min,
+        pv_max,
+        pv_step,
+        wind_min,
+        wind_max,
+        wind_step,
+        hydro_min,
+        hydro_max,
+        hydro_step,
+        bess_min,
+        bess_max,
+        bess_step
+          ]
+          }
         }
         pd.DataFrame(grid_config_data).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
         
@@ -708,3 +733,4 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
+
