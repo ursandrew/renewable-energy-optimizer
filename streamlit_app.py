@@ -243,7 +243,7 @@ with st.sidebar:
     
     # ADD THIS SECTION:
        st.subheader("Operating Configuration")
-          hydro_hours_per_day = st.number_input(
+       hydro_hours_per_day = st.number_input(
             "Operating Hours (hours/day)", 
             value=6, 
             min_value=1, 
@@ -253,22 +253,22 @@ with st.sidebar:
             help="How many consecutive hours per day should hydro operate? System will auto-optimize the time window."
     )
     
-          st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
+      st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
     
     # Example windows
-    if hydro_hours_per_day < 24:
+      if hydro_hours_per_day < 24:
         st.caption(f"Example windows to test: 00:00-{hydro_hours_per_day:02d}:00, 01:00-{hydro_hours_per_day+1:02d}:00, etc.")
     
     # REMOVE these old parameters (if they exist):
     # hydro_window_min = ...  # DELETE
     # hydro_window_max = ...  # DELETE
     
-    st.subheader("Financial Parameters")
+     st.subheader("Financial Parameters")
     col1, col2 = st.columns(2)
-    with col1:
+     with col1:
         hydro_capex = st.number_input("CapEx ($/kW)", value=2000, step=10, key="hydro_capex")
         hydro_opex = st.number_input("OpEx ($/kW/yr)", value=20, step=1, key="hydro_opex")
-    with col2:
+     with col2:
         hydro_lifetime = st.number_input("Lifetime (years)", value=50, step=1, key="hydro_life")
         hydro_lcoe = st.number_input("LCOE ($/MWh)", value=40.0, step=1.0, key="hydro_lcoe")
     
@@ -826,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
