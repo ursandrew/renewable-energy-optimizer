@@ -27,47 +27,51 @@ try:
 except ImportError:
     OPTIMIZATION_AVAILABLE = False
 def build_input_excel_from_streamlit(
-    # Configuration
-    simulation_hours, 
-    target_unmet_percent,  # <-- CRITICAL
-    discount_rate, 
-    inflation_rate, 
-    project_lifetime,
-    # PV
+    simulation_hours, target_unmet_percent, discount_rate, inflation_rate, project_lifetime,
     pv_min, pv_max, pv_step, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
-    # Wind
     wind_min, wind_max, wind_step, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
-    # Hydro
-    hydro_min, hydro_max, hydro_step, 
-    hydro_hours_per_day,  # <-- CHANGED from hydro_window_min, hydro_window_max
+    hydro_min, hydro_max, hydro_step, hydro_hours_per_day,
     hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
-    # BESS
     bess_min, bess_max, bess_step, bess_duration, bess_min_soc, bess_max_soc,
     bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
     bess_opex, bess_lifetime, bess_replacement_cost,
-    # Profiles
-    load_profile_df, 
-    pv_profile_df, 
-    wind_profile_df, 
-    hydro_profile_df=None
+    load_profile_df, pv_profile_df, wind_profile_df, hydro_profile_df=None
 ):
     """Build complete Excel input file from Streamlit parameters."""
     
+    from io import BytesIO
     output = BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
-        # Configuration sheet
+        # ====================================================================
+        # SHEET 1: Configuration
+        # ====================================================================
         config_data = {
-            'Parameter': ['Simulation Hours', 'Target Unmet Load (%)', 'Optimization Method',
-                         'Discount Rate (%)', 'Inflation Rate (%)', 'Project Lifetime (years)',
-                         'Use Dynamic LCOE'],
-            'Value': [simulation_hours, target_unmet_percent, 'GRID_SEARCH',
-                     discount_rate, inflation_rate, project_lifetime, 'NO']
+            'Parameter': [
+                'Simulation Hours',
+                'Target Unmet Load (%)',
+                'Optimization Method',
+                'Discount Rate (%)',
+                'Inflation Rate (%)',
+                'Project Lifetime (years)',
+                'Use Dynamic LCOE'
+            ],
+            'Value': [
+                simulation_hours,
+                target_unmet_percent,
+                'GRID_SEARCH',
+                discount_rate,
+                inflation_rate,
+                project_lifetime,
+                'NO'
+            ]
         }
         pd.DataFrame(config_data).to_excel(writer, sheet_name='Configuration', index=False)
         
-        # Grid Search Config sheet
+        # ====================================================================
+        # SHEET 2: Grid_Search_Config
+        # ====================================================================
         grid_config_data = {
             'Component': ['PV', 'Wind', 'Hydro', 'BESS'],
             'Min_Capacity': [pv_min, wind_min, hydro_min, bess_min],
@@ -76,53 +80,113 @@ def build_input_excel_from_streamlit(
         }
         pd.DataFrame(grid_config_data).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
         
-        # Solar_PV sheet
+        # ====================================================================
+        # SHEET 3: Solar_PV
+        # ====================================================================
         solar_data = {
-            'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
-                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
-                         'Lifetime (years)', 'LCOE ($/MWh)', 'Derating Factor (%)'],
-            'Value': [pv_min, pv_min, pv_max, pv_step, pv_capex, pv_opex,
-                     pv_lifetime, pv_lcoe, 100]
+            'Parameter': [
+                'Initial Capacity (MW)',
+                'CapEx ($/kW)',
+                'OpEx ($/kW/year)',
+                'Lifetime (years)',
+                'LCOE ($/MWh)',
+                'Enabled'
+            ],
+            'Value': [
+                pv_min,
+                pv_capex,
+                pv_opex,
+                pv_lifetime,
+                pv_lcoe,
+                'YES'
+            ]
         }
         pd.DataFrame(solar_data).to_excel(writer, sheet_name='Solar_PV', index=False)
         
-        # Wind sheet
+        # ====================================================================
+        # SHEET 4: Wind
+        # ====================================================================
         wind_data = {
-            'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
-                         'Step Size (MW)', 'CAPEX ($/kW)', 'OPEX ($/kW/year)',
-                         'Lifetime (years)', 'LCOE ($/MWh)', 'Hub Height (m)',
-                         'Derating Factor (%)'],
-            'Value': [wind_min, wind_min, wind_max, wind_step, wind_capex, wind_opex,
-                     wind_lifetime, wind_lcoe, 80, 100]
+            'Parameter': [
+                'Initial Capacity (MW)',
+                'CapEx ($/kW)',
+                'OpEx ($/kW/year)',
+                'Lifetime (years)',
+                'LCOE ($/MWh)',
+                'Enabled'
+            ],
+            'Value': [
+                wind_min,
+                wind_capex,
+                wind_opex,
+                wind_lifetime,
+                wind_lcoe,
+                'YES' if wind_max > 0 else 'NO'
+            ]
         }
         pd.DataFrame(wind_data).to_excel(writer, sheet_name='Wind', index=False)
         
-       # Hydro sheet
+        # ====================================================================
+        # SHEET 5: Hydro - CORRECTED TO MATCH YOUR CODE
+        # ====================================================================
         hydro_data = {
-            'Parameter': ['Initial Capacity (MW)', 'Min Capacity (MW)', 'Max Capacity (MW)',
-                         'Step Size (MW)', 'CapEx ($/kW)', 'OpEx ($/kW/year)',
-                         'Lifetime (years)', 'LCOE ($/MWh)', 'Operating Hours'],
-            'Value': [hydro_min, hydro_min, hydro_max, hydro_step, 
-                     hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
-                     hydro_hours_per_day]
+            'Parameter': [
+                'Initial Capacity (MW)',
+                'CapEx ($/kW)',
+                'OpEx ($/kW/year)',
+                'Lifetime (years)',
+                'LCOE ($/MWh)',
+                'Operating Hours',
+                'Enabled'
+            ],
+            'Value': [
+                hydro_min,
+                hydro_capex,
+                hydro_opex,
+                hydro_lifetime,
+                hydro_lcoe,
+                hydro_hours_per_day,
+                'YES' if hydro_max > 0 else 'NO'
+            ]
         }
         pd.DataFrame(hydro_data).to_excel(writer, sheet_name='Hydro', index=False)
         
-        # BESS sheet
+        # ====================================================================
+        # SHEET 6: BESS
+        # ====================================================================
         bess_data = {
-            'Parameter': ['Initial Power (MW)', 'Min Power (MW)', 'Max Power (MW)',
-                         'Step Size (MW)', 'Duration (hours)', 'Min SOC (%)', 'Max SOC (%)',
-                         'Charging Efficiency (%)', 'Discharging Efficiency (%)',
-                         'Power CAPEX ($/kW)', 'Energy CAPEX ($/kWh)', 'OPEX ($/kWh/year)',
-                         'Lifetime (years)', 'Replacement Cost (%)'],
-            'Value': [bess_min, bess_min, bess_max, bess_step, bess_duration,
-                     bess_min_soc, bess_max_soc, bess_charge_eff, bess_discharge_eff,
-                     bess_power_capex, bess_energy_capex, bess_opex,
-                     bess_lifetime, bess_replacement_cost]
+            'Parameter': [
+                'Initial Power (MW)',
+                'Duration (hours)',
+                'Min SOC (%)',
+                'Max SOC (%)',
+                'Charging Efficiency (%)',
+                'Discharging Efficiency (%)',
+                'LCOS ($/MWh)',
+                'Power CapEx ($/kW)',
+                'Energy CapEx ($/kWh)',
+                'Lifetime (years)',
+                'Enabled'
+            ],
+            'Value': [
+                bess_min,
+                bess_duration,
+                bess_min_soc,
+                bess_max_soc,
+                bess_charge_eff,
+                bess_discharge_eff,
+                0,  # LCOS - calculated internally
+                bess_power_capex,
+                bess_energy_capex,
+                bess_lifetime,
+                'YES'
+            ]
         }
         pd.DataFrame(bess_data).to_excel(writer, sheet_name='BESS', index=False)
         
-        # Profile sheets
+        # ====================================================================
+        # SHEET 7-10: Profiles
+        # ====================================================================
         load_profile_df.to_excel(writer, sheet_name='Load_Profile', index=False)
         pv_profile_df.to_excel(writer, sheet_name='PVsyst_Profile', index=False)
         wind_profile_df.to_excel(writer, sheet_name='Wind_Profile', index=False)
@@ -845,6 +909,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
