@@ -524,9 +524,22 @@ with tab2:
                     bess_opex, bess_lifetime, bess_replacement_cost,
                     load_df, pv_df, wind_df, hydro_df
                 )
-                
                 # Save temp file
-                temp_file = "temp_input_generated.xlsx"
+                import os
+                temp_file = os.path.join(os.getcwd(), "temp_input_generated.xlsx")
+                
+                # Make sure we have the bytes
+                excel_data = excel_bytes.getvalue()
+                
+                with open(temp_file, "wb") as f:
+                    f.write(excel_data)
+                
+                # Verify file was created
+                if not os.path.exists(temp_file):
+                    st.error(f"❌ Failed to create temp file at: {temp_file}")
+                    raise FileNotFoundError(f"Could not create {temp_file}")
+                
+                st.write(f"✓ Temp file created: {temp_file}")  # Debug message
                 
                 # Run optimization
                 status_text.text("⚙️ Loading optimization engine...")
@@ -826,6 +839,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
