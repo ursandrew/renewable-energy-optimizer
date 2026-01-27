@@ -327,15 +327,15 @@ with st.expander("💧 HYDRO"):
     # OPTIMIZATION CONFIGURATION
     # ========================================================================
     with st.expander("🎯 OPTIMIZATION SETTINGS"):
-    st.subheader("Reliability Target")
-    target_unmet_percent = st.number_input(
-        "Target Unmet Load (%)", 
-        value=0.0, 
-        min_value=0.0, 
-        max_value=5.0, 
-        step=0.1,
-        key="target_unmet",
-        help="Maximum acceptable unmet load. 0% = 100% reliable system"
+        st.subheader("Reliability Target")
+        target_unmet_percent = st.number_input(
+            "Target Unmet Load (%)", 
+            value=0.0, 
+            min_value=0.0, 
+            max_value=5.0, 
+            step=0.1,
+            key="target_unmet",
+            help="Maximum acceptable unmet load. 0% = 100% reliable system"
     )
     
     if target_unmet_percent == 0.0:
@@ -826,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
