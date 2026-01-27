@@ -253,7 +253,7 @@ with st.sidebar:
             help="How many consecutive hours per day should hydro operate? System will auto-optimize the time window."
     )
     
-      st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
+       st.info(f"💡 System will test all possible {hydro_hours_per_day}-hour windows and find the optimal operating time")
     
     # Example windows
       if hydro_hours_per_day < 24:
@@ -826,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
