@@ -525,7 +525,7 @@ with tab2:
                     load_df, pv_df, wind_df, hydro_df
 )
 )
-)
+
                 
                 # Save temp file
                 temp_file = "temp_input_generated.xlsx"
@@ -830,6 +830,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
