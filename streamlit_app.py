@@ -510,27 +510,23 @@ with tab2:
                 
                 excel_bytes = build_input_excel_from_streamlit(
                     8760, 
-                    target_unmet_percent,  # <-- Use sidebar value, not hardcoded 0
+                    target_unmet_percent,
                     discount_rate, 
                     inflation_rate, 
                     project_lifetime,
                     pv_min, pv_max, pv_step, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
                     wind_min, wind_max, wind_step, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
                     hydro_min, hydro_max, hydro_step, 
-                    hydro_hours_per_day,  # <-- Pass this instead of window_min/max
+                    hydro_hours_per_day,
                     hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
                     bess_min, bess_max, bess_step, bess_duration, bess_min_soc, bess_max_soc,
                     bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
                     bess_opex, bess_lifetime, bess_replacement_cost,
                     load_df, pv_df, wind_df, hydro_df
-
-                    )
-
+                )
                 
                 # Save temp file
                 temp_file = "temp_input_generated.xlsx"
-                with open(temp_file, "wb") as f:
-                    f.write(excel_bytes.getvalue())
                 
                 # Run optimization
                 status_text.text("⚙️ Loading optimization engine...")
@@ -830,6 +826,7 @@ st.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
+
 
 
 
