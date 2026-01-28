@@ -92,7 +92,7 @@ def build_input_excel_from_streamlit(
                 'BESS Search Start',
                 'BESS Search End',
                 'BESS Search Step',
-                'max_combinations'
+                'Max Combinations'
             ],
             'Value': [
                 pv_min,
@@ -1137,3 +1137,4 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
+
