@@ -92,7 +92,7 @@ def build_input_excel_from_streamlit(
                 'BESS Search Start',
                 'BESS Search End',
                 'BESS Search Step',
-                'Max Combinations'
+                'max_combinations'
             ],
             'Value': [
                 pv_min,
@@ -232,7 +232,9 @@ def build_input_excel_from_streamlit(
 # EXCEL EXPORT FUNCTION - Matches Anaconda output structure
 # ==============================================================================
 
-def export_detailed_results_to_excel(results_dict, results_df, optimal_row, config_params):
+def export_detailed_results_to_excel(results_dict, results_df, optimal_row, config_params, 
+                                     load_profile=None, pvsyst_profile=None, wind_profile=None, 
+                                     hydro_profile=None, optimization_module=None):
     """
     Export comprehensive optimization results to Excel file
     EXACT MATCH to Anaconda prompt output structure for validation
@@ -242,8 +244,8 @@ def export_detailed_results_to_excel(results_dict, results_df, optimal_row, conf
     2. Cost_Breakdown  
     3. All_Results
     4. Feasible_Solutions
-    5. Hourly_Dispatch (if dispatch data available)
-    6. Hydro_Window_Analysis (if hydro included)
+    5. Hourly_Dispatch (actual dispatch if profiles provided)
+    6. Hydro_Window_Analysis (actual analysis if profiles provided)
     """
     output = BytesIO()
     
@@ -361,11 +363,11 @@ def export_detailed_results_to_excel(results_dict, results_df, optimal_row, conf
                 optimal_row.get('Salvage_$', 0)
             ],
             'Total NPC ($)': [
-                results_dict['pv_npc'],
-                results_dict['wind_npc'],
-                results_dict['hydro_npc'],
-                results_dict['bess_npc'],
-                results_dict['npc']
+                optimal_row.get('PV_NPC_$', results_dict['pv_npc']),
+                optimal_row.get('Wind_NPC_$', results_dict['wind_npc']),
+                optimal_row.get('Hydro_NPC_$', results_dict['hydro_npc']),
+                optimal_row.get('BESS_NPC_$', results_dict['bess_npc']),
+                optimal_row.get('NPC_$', results_dict['npc'])
             ],
             'Annualized ($/yr)': [
                 optimal_row.get('PV_Annualized_$/yr', 0),
@@ -396,26 +398,111 @@ def export_detailed_results_to_excel(results_dict, results_df, optimal_row, conf
             )
         
         # ====================================================================
-        # SHEET 5: Hourly_Dispatch (Optional - requires dispatch calculation)
+        # SHEET 5: Hourly_Dispatch - Generate actual dispatch if possible
         # ====================================================================
-        # Note: This would require re-running dispatch calculation
-        # For now, we'll note this is available in Anaconda version
-        dispatch_note = pd.DataFrame({
-            'Note': ['Hourly dispatch data available in Anaconda version output',
-                    'Run optimization through Anaconda prompt for detailed hourly dispatch']
-        })
-        dispatch_note.to_excel(writer, sheet_name='Hourly_Dispatch', index=False)
+        if optimization_module and load_profile is not None and pvsyst_profile is not None:
+            try:
+                # Extract optimal configuration
+                pv_kw = results_dict['pv_capacity'] * 1000
+                wind_kw = results_dict['wind_capacity'] * 1000
+                hydro_kw = results_dict['hydro_capacity'] * 1000
+                bess_power_kw = results_dict['bess_power'] * 1000
+                bess_capacity_kwh = results_dict['bess_energy'] * 1000
+                hydro_start = int(results_dict['hydro_window_start'])
+                hydro_end = int(results_dict['hydro_window_end'])
+                
+                # Get component configs from session (stored during optimization)
+                # Note: This requires storing these during optimization
+                if hasattr(st.session_state, 'component_configs'):
+                    solar = st.session_state.component_configs['solar']
+                    wind = st.session_state.component_configs['wind']
+                    hydro = st.session_state.component_configs['hydro']
+                    bess = st.session_state.component_configs['bess']
+                    
+                    # Calculate dispatch using optimization module
+                    dispatch_df = optimization_module.calculate_dispatch_with_hydro(
+                        load_profile, pvsyst_profile, wind_profile,
+                        pv_kw, wind_kw, hydro_kw,
+                        bess_power_kw, bess_capacity_kwh,
+                        solar, wind, hydro, bess,
+                        hydro_start, hydro_end
+                    )
+                    dispatch_df.to_excel(writer, sheet_name='Hourly_Dispatch', index=False)
+                else:
+                    # Config not available - show note
+                    dispatch_note = pd.DataFrame({
+                        'Note': ['Hourly dispatch calculation requires component configurations',
+                                'Rerun optimization to generate detailed dispatch',
+                                'Or use Anaconda version for full dispatch analysis']
+                    })
+                    dispatch_note.to_excel(writer, sheet_name='Hourly_Dispatch', index=False)
+            except Exception as e:
+                # Error in dispatch calculation - show note
+                dispatch_note = pd.DataFrame({
+                    'Note': [f'Error generating dispatch: {str(e)}',
+                            'Run optimization through Anaconda prompt for detailed hourly dispatch']
+                })
+                dispatch_note.to_excel(writer, sheet_name='Hourly_Dispatch', index=False)
+        else:
+            # Profiles not available - show note
+            dispatch_note = pd.DataFrame({
+                'Note': ['Hourly dispatch data available in Anaconda version output',
+                        'Run optimization through Anaconda prompt for detailed hourly dispatch']
+            })
+            dispatch_note.to_excel(writer, sheet_name='Hourly_Dispatch', index=False)
         
         # ====================================================================
-        # SHEET 6: Hydro_Window_Analysis (Optional - requires window analysis)
+        # SHEET 6: Hydro_Window_Analysis - Generate actual analysis if possible
         # ====================================================================
-        # Note: This would require re-running window analysis
-        window_note = pd.DataFrame({
-            'Note': ['Hydro window analysis available in Anaconda version output',
-                    'Run optimization through Anaconda prompt for detailed window analysis',
-                    f'Optimal Window: {int(results_dict["hydro_window_start"]):02d}:00 - {int(results_dict["hydro_window_end"]):02d}:00']
-        })
-        window_note.to_excel(writer, sheet_name='Hydro_Window_Analysis', index=False)
+        if optimization_module and load_profile is not None and results_dict['hydro_capacity'] > 0:
+            try:
+                # Extract optimal configuration
+                pv_kw = results_dict['pv_capacity'] * 1000
+                wind_kw = results_dict['wind_capacity'] * 1000
+                hydro_kw = results_dict['hydro_capacity'] * 1000
+                bess_power_kw = results_dict['bess_power'] * 1000
+                bess_capacity_kwh = results_dict['bess_energy'] * 1000
+                
+                # Get component configs
+                if hasattr(st.session_state, 'component_configs'):
+                    solar = st.session_state.component_configs['solar']
+                    wind = st.session_state.component_configs['wind']
+                    hydro = st.session_state.component_configs['hydro']
+                    bess = st.session_state.component_configs['bess']
+                    
+                    # Calculate window analysis using optimization module
+                    _, _, _, windows_df = optimization_module.find_optimal_hydro_window(
+                        load_profile, pvsyst_profile, wind_profile,
+                        pv_kw, wind_kw, hydro_kw,
+                        bess_power_kw, bess_capacity_kwh,
+                        solar, wind, hydro, bess,
+                        return_all_windows=True
+                    )
+                    windows_df.to_excel(writer, sheet_name='Hydro_Window_Analysis', index=False)
+                else:
+                    # Config not available
+                    window_note = pd.DataFrame({
+                        'Note': ['Hydro window analysis requires component configurations',
+                                'Rerun optimization to generate detailed window analysis',
+                                f'Optimal Window: {int(results_dict["hydro_window_start"]):02d}:00 - {int(results_dict["hydro_window_end"]):02d}:00']
+                    })
+                    window_note.to_excel(writer, sheet_name='Hydro_Window_Analysis', index=False)
+            except Exception as e:
+                # Error in window analysis
+                window_note = pd.DataFrame({
+                    'Note': [f'Error generating window analysis: {str(e)}',
+                            'Run optimization through Anaconda prompt for detailed window analysis',
+                            f'Optimal Window: {int(results_dict["hydro_window_start"]):02d}:00 - {int(results_dict["hydro_window_end"]):02d}:00']
+                })
+                window_note.to_excel(writer, sheet_name='Hydro_Window_Analysis', index=False)
+        else:
+            # No hydro or profiles not available
+            window_note = pd.DataFrame({
+                'Note': ['Hydro window analysis available in Anaconda version output',
+                        'Run optimization through Anaconda prompt for detailed window analysis',
+                        f'Optimal Window: {int(results_dict["hydro_window_start"]):02d}:00 - {int(results_dict["hydro_window_end"]):02d}:00']
+            })
+            window_note.to_excel(writer, sheet_name='Hydro_Window_Analysis', index=False)
     
     output.seek(0)
     return output
@@ -830,6 +917,7 @@ with tab2:
                     os.remove(temp_file)
                 
                 if optimal is not None:
+                    # Store complete optimal solution for export
                     st.session_state.results = {
                         'pv_capacity': optimal['PV_kW'] / 1000,
                         'wind_capacity': optimal['Wind_kW'] / 1000,
@@ -847,8 +935,25 @@ with tab2:
                         'wind_npc': optimal.get('Wind_NPC_$', 0),
                         'hydro_npc': optimal.get('Hydro_NPC_$', 0),
                         'bess_npc': optimal.get('BESS_NPC_$', 0),
-                        'results_df': results_df
+                        'results_df': results_df,
+                        'optimal_row': optimal.to_dict()  # Store complete optimal row
                     }
+                    
+                    # Store component configs and profiles for detailed export
+                    st.session_state.component_configs = {
+                        'solar': solar,
+                        'wind': wind,
+                        'hydro': hydro,
+                        'bess': bess
+                    }
+                    st.session_state.profiles = {
+                        'load': load_profile,
+                        'pvsyst': pvsyst_profile,
+                        'wind': wind_profile,
+                        'hydro': hydro_profile_opt
+                    }
+                    st.session_state.opt_module = opt_module
+                    
                     st.session_state.optimization_complete = True
                     
                     st.success("✅ Optimization Complete!")
@@ -923,21 +1028,22 @@ with tab3:
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.info("💡 Download complete Excel file with all grid search results for validation against Anaconda output")
+            st.info("💡 Download complete Excel file with all grid search results, hourly dispatch, and hydro window analysis")
         with col2:
-            # Find optimal row from results_df
+            # Get results and optimal row
             results_df = results['results_df']
-            optimal_row = results_df[
-                (results_df['PV_kW'] == results['pv_capacity'] * 1000) &
-                (results_df['Wind_kW'] == results['wind_capacity'] * 1000) &
-                (results_df['Hydro_kW'] == results['hydro_capacity'] * 1000) &
-                (results_df['BESS_Power_kW'] == results['bess_power'] * 1000)
-            ]
+            optimal_row = results.get('optimal_row', {})
             
-            if len(optimal_row) > 0:
-                optimal_row = optimal_row.iloc[0].to_dict()
-            else:
-                optimal_row = {}
+            # If optimal_row wasn't stored (old session), find it
+            if not optimal_row:
+                optimal_match = results_df[
+                    (results_df['PV_kW'] == results['pv_capacity'] * 1000) &
+                    (results_df['Wind_kW'] == results['wind_capacity'] * 1000) &
+                    (results_df['Hydro_kW'] == results['hydro_capacity'] * 1000) &
+                    (results_df['BESS_Power_kW'] == results['bess_power'] * 1000)
+                ]
+                if len(optimal_match) > 0:
+                    optimal_row = optimal_match.iloc[0].to_dict()
             
             # Config parameters for Summary sheet
             config_params = {
@@ -946,9 +1052,20 @@ with tab3:
                 'inflation_rate': inflation_rate
             }
             
+            # Get profiles and optimization module if available
+            profiles = getattr(st.session_state, 'profiles', None)
+            opt_module = getattr(st.session_state, 'opt_module', None)
+            
+            load_profile = profiles['load'] if profiles else None
+            pvsyst_profile = profiles['pvsyst'] if profiles else None
+            wind_profile = profiles['wind'] if profiles else None
+            hydro_profile = profiles['hydro'] if profiles else None
+            
             # Generate Excel file matching Anaconda output structure
             excel_output = export_detailed_results_to_excel(
-                results, results_df, optimal_row, config_params
+                results, results_df, optimal_row, config_params,
+                load_profile, pvsyst_profile, wind_profile, hydro_profile,
+                opt_module
             )
             
             st.download_button(
