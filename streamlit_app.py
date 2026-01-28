@@ -84,10 +84,11 @@ def build_input_excel_from_streamlit(
         pd.DataFrame(config_data).to_excel(writer, sheet_name='Configuration', index=False)
         
         # ====================================================================
-        # SHEET 2: Grid_Search_Config - FIXED WITH max_combinations
+        # SHEET 2: Grid_Search_Config - Match Anaconda format
         # ====================================================================
         grid_config_data = {
             'Parameter': [
+                'Enable Grid Search',
                 'PV Search Start',
                 'PV Search End',
                 'PV Search Step',
@@ -100,9 +101,12 @@ def build_input_excel_from_streamlit(
                 'BESS Search Start',
                 'BESS Search End',
                 'BESS Search Step',
-                'max_combinations'
+                'Max Combinations',
+                'Optimization Objective',
+                'Show Top N Solutions'
             ],
             'Value': [
+                'YES',
                 pv_min,
                 pv_max,
                 pv_step,
@@ -115,7 +119,9 @@ def build_input_excel_from_streamlit(
                 bess_min,
                 bess_max,
                 bess_step,
-                1000000
+                100000000,
+                'NPC',
+                5
             ]
         }
         pd.DataFrame(grid_config_data).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
