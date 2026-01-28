@@ -18,15 +18,23 @@ from io import BytesIO
 
 # Try to import optimization code
 try:
-    from optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB import (
+    from optimize_gridsearch_hydro_static_STREAMLITCHECK import (
         read_inputs,
         grid_search_optimize_hydro,
         find_optimal_solution
     )
     OPTIMIZATION_AVAILABLE = True
 except ImportError:
-    OPTIMIZATION_AVAILABLE = False
-    print("Warning: Optimization code not found.")
+    try:
+        from optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB import (
+            read_inputs,
+            grid_search_optimize_hydro,
+            find_optimal_solution
+        )
+        OPTIMIZATION_AVAILABLE = True
+    except ImportError:
+        OPTIMIZATION_AVAILABLE = False
+        print("Warning: Optimization code not found.")
 
 
 # ==============================================================================
@@ -892,7 +900,11 @@ with tab2:
                 status_text.text("⚙️ Loading optimization engine...")
                 progress_bar.progress(25)
                 
-                import optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB as opt_module
+                try:
+                    import optimize_gridsearch_hydro_static_STREAMLITCHECK as opt_module
+                except ImportError:
+                    import optimize_gridsearch_hydro_static_HOMERNPCFIXED_COMB as opt_module
+                
                 opt_module.INPUT_FILE = temp_file
                 
                 status_text.text("📖 Reading configuration...")
@@ -906,12 +918,17 @@ with tab2:
                     config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile, hydro_profile_opt = result
                 
                 # DIAGNOSTIC: Show what configs were read
-                st.write("**🔍 Diagnostic Info:**")
+                st.write("**🔍 Diagnostic Info - Configuration:**")
                 st.write(f"- Discount Rate: {config.get('discount_rate', 'N/A')}%")
-                st.write(f"- Inflation Rate: {config.get('inflation_rate', 'N/A')}%")
+                st.write(f"- Inflation Rate: {config.get('inflation_rate', 'N/A')}%") 
+                st.write(f"- Real Discount Rate: {opt_module.calculate_real_discount_rate(config.get('discount_rate', 0)/100, config.get('inflation_rate', 0)/100)*100:.4f}%")
                 st.write(f"- Project Lifetime: {config.get('project_lifetime', 'N/A')} years")
-                st.write(f"- PV OpEx: ${solar.get('opex_per_kw', 'N/A')}/kW/yr")
-                st.write(f"- PV Lifetime: {solar.get('lifetime', 'N/A')} years")
+                st.write(f"- CRF (25 years): {opt_module.calculate_crf(opt_module.calculate_real_discount_rate(config.get('discount_rate', 0)/100, config.get('inflation_rate', 0)/100), config.get('project_lifetime', 25)):.6f}")
+                
+                st.write("**🔍 Component Configs:**")
+                st.write(f"- PV OpEx: ${solar.get('opex_per_kw', 'N/A')}/kW/yr, Lifetime: {solar.get('lifetime', 'N/A')} years")
+                st.write(f"- Wind OpEx: ${wind.get('opex_per_kw', 'N/A')}/kW/yr, Lifetime: {wind.get('lifetime', 'N/A')} years")
+                st.write(f"- BESS OpEx: ${bess.get('om_per_kw_year', 'N/A')}/kW/yr (note: should be per kWh), Lifetime: {bess.get('lifetime', 'N/A')} years")
                 
                 status_text.text("🔍 Running optimization... (may take several minutes)")
                 progress_bar.progress(35)
