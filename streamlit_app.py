@@ -229,6 +229,199 @@ def build_input_excel_from_streamlit(
 
 
 # ==============================================================================
+# EXCEL EXPORT FUNCTION - Matches Anaconda output structure
+# ==============================================================================
+
+def export_detailed_results_to_excel(results_dict, results_df, optimal_row, config_params):
+    """
+    Export comprehensive optimization results to Excel file
+    EXACT MATCH to Anaconda prompt output structure for validation
+    
+    Sheets:
+    1. Summary
+    2. Cost_Breakdown  
+    3. All_Results
+    4. Feasible_Solutions
+    5. Hourly_Dispatch (if dispatch data available)
+    6. Hydro_Window_Analysis (if hydro included)
+    """
+    output = BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        
+        # ====================================================================
+        # SHEET 1: Summary - EXACT MATCH to Anaconda format
+        # ====================================================================
+        summary_data = {
+            'Parameter': [
+                'OPTIMAL CONFIGURATION',
+                '',
+                'Solar PV Capacity (kW)',
+                'Wind Capacity (kW)',
+                'Hydro Capacity (kW)',
+                'Hydro Operating Window',
+                'BESS Power (kW)',
+                'BESS Energy (kWh)',
+                '',
+                'FINANCIAL METRICS',
+                '',
+                'Total NPC ($)',
+                'System LCOE ($/MWh)',
+                'Total Annualized Cost ($/yr)',
+                '',
+                'RELIABILITY METRICS',
+                '',
+                'Unmet Load (%)',
+                'Unmet Energy (kWh/yr)',
+                'Total Energy Served (kWh/yr)',
+                'Total Energy Served (kWh - Lifetime)',
+                '',
+                'ENERGY CONTRIBUTION',
+                '',
+                'PV Fraction (%)',
+                'Wind Fraction (%)',
+                'Hydro Fraction (%)',
+                'RE Penetration (%)',
+                '',
+                'STORAGE & EXCESS',
+                '',
+                'BESS Contribution (%)',
+                'Excess Fraction (%)'
+            ],
+            'Value': [
+                '',
+                '',
+                f"{results_dict['pv_capacity'] * 1000:.1f}",
+                f"{results_dict['wind_capacity'] * 1000:.1f}",
+                f"{results_dict['hydro_capacity'] * 1000:.1f}",
+                f"{int(results_dict['hydro_window_start']):02d}:00 - {int(results_dict['hydro_window_end']):02d}:00",
+                f"{results_dict['bess_power'] * 1000:.1f}",
+                f"{results_dict['bess_energy'] * 1000:.1f}",
+                '',
+                '',
+                '',
+                f"{results_dict['npc']:,.2f}",
+                f"{results_dict['lcoe']:.2f}",
+                f"{optimal_row.get('Annualized_$/yr', 0):,.2f}",
+                '',
+                '',
+                '',
+                f"{results_dict['unmet_pct']:.2f}",
+                f"{optimal_row.get('Unmet_kWh', 0):,.0f}",
+                f"{optimal_row.get('Total_Energy_Served_kWh', 0):,.0f}",
+                f"{optimal_row.get('Total_Energy_Served_kWh', 0) * config_params.get('project_lifetime', 25):,.0f}",
+                '',
+                '',
+                '',
+                f"{optimal_row.get('PV_Fraction_%', 0):.1f}",
+                f"{optimal_row.get('Wind_Fraction_%', 0):.1f}",
+                f"{optimal_row.get('Hydro_Fraction_%', 0):.1f}",
+                f"{optimal_row.get('RE_Penetration_%', 100):.1f}",
+                '',
+                '',
+                '',
+                f"{optimal_row.get('BESS_Contribution_%', 0):.1f}",
+                f"{optimal_row.get('Excess_Fraction_%', 0):.1f}"
+            ]
+        }
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        
+        # ====================================================================
+        # SHEET 2: Cost_Breakdown - EXACT MATCH to Anaconda format
+        # ====================================================================
+        cost_breakdown = {
+            'Component': ['PV', 'Wind', 'Hydro', 'BESS', 'System'],
+            'Capital ($)': [
+                optimal_row.get('PV_Capital_$', 0),
+                optimal_row.get('Wind_Capital_$', 0),
+                optimal_row.get('Hydro_Capital_$', 0),
+                optimal_row.get('BESS_Capital_$', 0),
+                optimal_row.get('Capital_$', 0)
+            ],
+            'Replacement ($)': [
+                optimal_row.get('PV_Replacement_$', 0),
+                optimal_row.get('Wind_Replacement_$', 0),
+                optimal_row.get('Hydro_Replacement_$', 0),
+                optimal_row.get('BESS_Replacement_$', 0),
+                optimal_row.get('Replacement_$', 0)
+            ],
+            'O&M ($)': [
+                optimal_row.get('PV_OM_$', 0),
+                optimal_row.get('Wind_OM_$', 0),
+                optimal_row.get('Hydro_OM_$', 0),
+                optimal_row.get('BESS_OM_$', 0),
+                optimal_row.get('OM_$', 0)
+            ],
+            'Salvage ($)': [
+                optimal_row.get('PV_Salvage_$', 0),
+                optimal_row.get('Wind_Salvage_$', 0),
+                optimal_row.get('Hydro_Salvage_$', 0),
+                optimal_row.get('BESS_Salvage_$', 0),
+                optimal_row.get('Salvage_$', 0)
+            ],
+            'Total NPC ($)': [
+                results_dict['pv_npc'],
+                results_dict['wind_npc'],
+                results_dict['hydro_npc'],
+                results_dict['bess_npc'],
+                results_dict['npc']
+            ],
+            'Annualized ($/yr)': [
+                optimal_row.get('PV_Annualized_$/yr', 0),
+                optimal_row.get('Wind_Annualized_$/yr', 0),
+                optimal_row.get('Hydro_Annualized_$/yr', 0),
+                optimal_row.get('BESS_Annualized_$/yr', 0),
+                optimal_row.get('Annualized_$/yr', 0)
+            ]
+        }
+        cost_df = pd.DataFrame(cost_breakdown)
+        cost_df.to_excel(writer, sheet_name='Cost_Breakdown', index=False)
+        
+        # ====================================================================
+        # SHEET 3: All_Results - Complete grid search
+        # ====================================================================
+        results_df.to_excel(writer, sheet_name='All_Results', index=False)
+        
+        # ====================================================================
+        # SHEET 4: Feasible_Solutions - Only feasible solutions sorted by NPC
+        # ====================================================================
+        feasible = results_df[results_df['Feasible'] == True].sort_values('NPC_$')
+        if len(feasible) > 0:
+            feasible.to_excel(writer, sheet_name='Feasible_Solutions', index=False)
+        else:
+            # Create empty sheet with message
+            pd.DataFrame({'Message': ['No feasible solutions found']}).to_excel(
+                writer, sheet_name='Feasible_Solutions', index=False
+            )
+        
+        # ====================================================================
+        # SHEET 5: Hourly_Dispatch (Optional - requires dispatch calculation)
+        # ====================================================================
+        # Note: This would require re-running dispatch calculation
+        # For now, we'll note this is available in Anaconda version
+        dispatch_note = pd.DataFrame({
+            'Note': ['Hourly dispatch data available in Anaconda version output',
+                    'Run optimization through Anaconda prompt for detailed hourly dispatch']
+        })
+        dispatch_note.to_excel(writer, sheet_name='Hourly_Dispatch', index=False)
+        
+        # ====================================================================
+        # SHEET 6: Hydro_Window_Analysis (Optional - requires window analysis)
+        # ====================================================================
+        # Note: This would require re-running window analysis
+        window_note = pd.DataFrame({
+            'Note': ['Hydro window analysis available in Anaconda version output',
+                    'Run optimization through Anaconda prompt for detailed window analysis',
+                    f'Optimal Window: {int(results_dict["hydro_window_start"]):02d}:00 - {int(results_dict["hydro_window_end"]):02d}:00']
+        })
+        window_note.to_excel(writer, sheet_name='Hydro_Window_Analysis', index=False)
+    
+    output.seek(0)
+    return output
+
+
+# ==============================================================================
 # PAGE CONFIGURATION
 # ==============================================================================
 
@@ -395,7 +588,7 @@ with st.sidebar:
             "Target Unmet Load (%)", 
             value=0.0, 
             min_value=0.0, 
-            max_value=15.0, 
+            max_value=5.0, 
             step=0.1,
             key="target_unmet",
             help="0% = 100% reliable system"
@@ -722,6 +915,52 @@ with tab3:
         
         st.info(f"💧 Hydro Window: {results['hydro_window_start']:02d}:00 - {results['hydro_window_end']:02d}:00")
         
+        # ====================================================================
+        # DOWNLOAD DETAILED RESULTS
+        # ====================================================================
+        st.markdown("---")
+        st.subheader("📥 Export Detailed Results")
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info("💡 Download complete Excel file with all grid search results for validation against Anaconda output")
+        with col2:
+            # Find optimal row from results_df
+            results_df = results['results_df']
+            optimal_row = results_df[
+                (results_df['PV_kW'] == results['pv_capacity'] * 1000) &
+                (results_df['Wind_kW'] == results['wind_capacity'] * 1000) &
+                (results_df['Hydro_kW'] == results['hydro_capacity'] * 1000) &
+                (results_df['BESS_Power_kW'] == results['bess_power'] * 1000)
+            ]
+            
+            if len(optimal_row) > 0:
+                optimal_row = optimal_row.iloc[0].to_dict()
+            else:
+                optimal_row = {}
+            
+            # Config parameters for Summary sheet
+            config_params = {
+                'project_lifetime': project_lifetime,
+                'discount_rate': discount_rate,
+                'inflation_rate': inflation_rate
+            }
+            
+            # Generate Excel file matching Anaconda output structure
+            excel_output = export_detailed_results_to_excel(
+                results, results_df, optimal_row, config_params
+            )
+            
+            st.download_button(
+                label="📥 Download Excel",
+                data=excel_output,
+                file_name=f"optimization_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        
+        st.markdown("---")
+        
         # Charts
         col1, col2 = st.columns(2)
         
@@ -763,5 +1002,3 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
-
-
