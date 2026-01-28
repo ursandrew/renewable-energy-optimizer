@@ -92,7 +92,7 @@ def build_input_excel_from_streamlit(
                 'BESS Search Start',
                 'BESS Search End',
                 'BESS Search Step',
-                'Max Combinations'
+                'max_combinations'
             ],
             'Value': [
                 pv_min,
@@ -896,6 +896,14 @@ with tab2:
                 else:
                     config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile, hydro_profile_opt = result
                 
+                # DIAGNOSTIC: Show what configs were read
+                st.write("**🔍 Diagnostic Info:**")
+                st.write(f"- Discount Rate: {config.get('discount_rate', 'N/A')}%")
+                st.write(f"- Inflation Rate: {config.get('inflation_rate', 'N/A')}%")
+                st.write(f"- Project Lifetime: {config.get('project_lifetime', 'N/A')} years")
+                st.write(f"- PV OpEx: ${solar.get('opex_per_kw', 'N/A')}/kW/yr")
+                st.write(f"- PV Lifetime: {solar.get('lifetime', 'N/A')} years")
+                
                 status_text.text("🔍 Running optimization... (may take several minutes)")
                 progress_bar.progress(35)
                 
@@ -1137,4 +1145,3 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
-
