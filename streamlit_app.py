@@ -92,7 +92,7 @@ def build_input_excel_from_streamlit(
                 'BESS Search Start',
                 'BESS Search End',
                 'BESS Search Step',
-                'Max Combinations'
+                'max_combinations'
             ],
             'Value': [
                 pv_min,
@@ -1034,16 +1034,34 @@ with tab3:
             results_df = results['results_df']
             optimal_row = results.get('optimal_row', {})
             
-            # If optimal_row wasn't stored (old session), find it
-            if not optimal_row:
+            # Debug: Check if optimal_row has cost data
+            if optimal_row and 'PV_OM_$' not in optimal_row:
+                st.warning("⚠️ Stored optimal_row missing cost details. Searching results_df...")
+                optimal_row = {}
+            
+            # If optimal_row wasn't stored or incomplete, find it from results_df
+            if not optimal_row or 'PV_OM_$' not in optimal_row:
+                # Search with small tolerance for floating point comparison
+                pv_kw_target = results['pv_capacity'] * 1000
+                wind_kw_target = results['wind_capacity'] * 1000
+                hydro_kw_target = results['hydro_capacity'] * 1000
+                bess_kw_target = results['bess_power'] * 1000
+                
                 optimal_match = results_df[
-                    (results_df['PV_kW'] == results['pv_capacity'] * 1000) &
-                    (results_df['Wind_kW'] == results['wind_capacity'] * 1000) &
-                    (results_df['Hydro_kW'] == results['hydro_capacity'] * 1000) &
-                    (results_df['BESS_Power_kW'] == results['bess_power'] * 1000)
+                    (abs(results_df['PV_kW'] - pv_kw_target) < 0.1) &
+                    (abs(results_df['Wind_kW'] - wind_kw_target) < 0.1) &
+                    (abs(results_df['Hydro_kW'] - hydro_kw_target) < 0.1) &
+                    (abs(results_df['BESS_Power_kW'] - bess_kw_target) < 0.1)
                 ]
+                
                 if len(optimal_match) > 0:
                     optimal_row = optimal_match.iloc[0].to_dict()
+                    st.success(f"✅ Found optimal row with {len(optimal_row)} columns")
+                else:
+                    st.error(f"❌ Could not find optimal row. Searched for PV={pv_kw_target}, Wind={wind_kw_target}, Hydro={hydro_kw_target}, BESS={bess_kw_target}")
+                    # Show what's actually in results_df for debugging
+                    st.write("Available columns:", results_df.columns.tolist()[:10])
+                    st.write("First few rows:", results_df[['PV_kW', 'Wind_kW', 'Hydro_kW', 'BESS_Power_kW', 'NPC_$']].head())
             
             # Config parameters for Summary sheet
             config_params = {
@@ -1119,4 +1137,3 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
-
