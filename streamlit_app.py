@@ -92,7 +92,7 @@ def build_input_excel_from_streamlit(
                 'BESS Search Start',
                 'BESS Search End',
                 'BESS Search Step',
-                'Max Combinations'
+                'max_combinations'
             ],
             'Value': [
                 pv_min,
@@ -395,7 +395,7 @@ with st.sidebar:
             "Target Unmet Load (%)", 
             value=0.0, 
             min_value=0.0, 
-            max_value=15.0, 
+            max_value=5.0, 
             step=0.1,
             key="target_unmet",
             help="0% = 100% reliable system"
@@ -556,13 +556,30 @@ with tab2:
                 status_text.text("🔨 Building input file...")
                 progress_bar.progress(15)
                 
+                # CRITICAL: Convert MW to kW for optimization code
+                pv_min_kw = pv_min * 1000
+                pv_max_kw = pv_max * 1000
+                pv_step_kw = pv_step * 1000
+                
+                wind_min_kw = wind_min * 1000
+                wind_max_kw = wind_max * 1000
+                wind_step_kw = wind_step * 1000
+                
+                hydro_min_kw = hydro_min * 1000
+                hydro_max_kw = hydro_max * 1000
+                hydro_step_kw = hydro_step * 1000
+                
+                bess_min_kw = bess_min * 1000
+                bess_max_kw = bess_max * 1000
+                bess_step_kw = bess_step * 1000
+                
                 excel_bytes = build_input_excel_from_streamlit(
                     8760, target_unmet_percent, discount_rate, inflation_rate, project_lifetime,
-                    pv_min, pv_max, pv_step, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
-                    wind_min, wind_max, wind_step, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
-                    hydro_min, hydro_max, hydro_step, hydro_hours_per_day,
+                    pv_min_kw, pv_max_kw, pv_step_kw, pv_capex, pv_opex, pv_lifetime, pv_lcoe,
+                    wind_min_kw, wind_max_kw, wind_step_kw, wind_capex, wind_opex, wind_lifetime, wind_lcoe,
+                    hydro_min_kw, hydro_max_kw, hydro_step_kw, hydro_hours_per_day,
                     hydro_capex, hydro_opex, hydro_lifetime, hydro_lcoe,
-                    bess_min, bess_max, bess_step, bess_duration, bess_min_soc, bess_max_soc,
+                    bess_min_kw, bess_max_kw, bess_step_kw, bess_duration, bess_min_soc, bess_max_soc,
                     bess_charge_eff, bess_discharge_eff, bess_power_capex, bess_energy_capex,
                     bess_opex, bess_lifetime, bess_replacement_cost,
                     load_df, pv_df, wind_df, hydro_df
@@ -746,5 +763,3 @@ st.markdown("""
     <p>PV + Wind + Hydro + BESS Optimization</p>
 </div>
 """, unsafe_allow_html=True)
-
-
