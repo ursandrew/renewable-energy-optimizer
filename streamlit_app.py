@@ -879,6 +879,15 @@ with tab2:
                 if not os.path.exists(temp_file):
                     raise FileNotFoundError(f"Failed to create {temp_file}")
                 
+                # DEBUG: Offer to download the generated Excel for inspection
+                st.download_button(
+                    label="🔍 Download Generated Input Excel (for debugging)",
+                    data=excel_bytes.getvalue(),
+                    file_name=f"debug_input_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.info("💡 Download the input Excel above to verify parameters before continuing")
+                
                 # Run optimization
                 status_text.text("⚙️ Loading optimization engine...")
                 progress_bar.progress(25)
