@@ -176,9 +176,9 @@ def read_inputs():
         elif 'optimization method' in param:
             config['optimization_method'] = str(value).upper()
         elif 'discount rate' in param and 'inflation' not in param:
-            config['discount_rate'] = float(value)
+            config['discount_rate'] = float(value) / 100  # Convert from % to decimal
         elif 'inflation' in param:
-            config['inflation_rate'] = float(value)
+            config['inflation_rate'] = float(value) / 100  # Convert from % to decimal
         elif 'project lifetime' in param or 'lifetime' in param:
             config['project_lifetime'] = int(value)
         elif 'dynamic lcoe' in param:
