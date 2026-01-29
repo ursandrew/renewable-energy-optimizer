@@ -1,11 +1,13 @@
 """
-RENEWABLE ENERGY OPTIMIZATION TOOL - PRODUCTION VERSION
-========================================================
-Features:
-- Excel export matching industry standard format
-- Enhanced professional visualization
-- Hydro Window Analysis sheet
-- Professional results dashboard
+RENEWABLE ENERGY OPTIMIZATION TOOL - COMPLETE VERSION
+======================================================
+Phase 1 + Phase 2 Enhancements:
+- Electrical metrics with capacity factor, LCOE, hours of operation
+- Enhanced cost visualizations (4 variations with tables)
+- Fixed cash flow chart with proper signs
+- Professional layout organization
+- Individual component LCOE display
+- Excess electricity and capacity shortage metrics
 """
 
 import streamlit as st
@@ -28,23 +30,17 @@ except ImportError:
 
 
 # ==============================================================================
-# ENHANCED EXCEL EXPORT - Industry Standard Format
+# EXCEL EXPORT - Industry Standard Format
 # ==============================================================================
 
 def export_results_industry_format(results_dict, results_df, optimal_row, config_params):
-    """
-    Export results matching industry standard Excel format.
-    """
+    """Export results matching industry standard Excel format."""
     output = BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
-        # ================================================================
-        # SHEET 1: Summary - Industry Standard Format
-        # ================================================================
+        # Sheet 1: Summary
         summary_data = []
-        
-        # Header section
         summary_data.extend([
             ['Parameter', 'Value'],
             ['Optimization Method', 'GRID_SEARCH'],
@@ -55,8 +51,6 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
             ['Feasible Solutions', len(results_df[results_df['Feasible'] == True])],
             ['Optimal Solution Iteration', optimal_row.get('Iteration', 0)],
             ['', ''],
-            ['', ''],
-            # Financial parameters
             ['Nominal Discount Rate (%)', config_params.get('discount_rate', 8.0)],
             ['Inflation Rate (%)', config_params.get('inflation_rate', 2.0)],
             ['Real Discount Rate (%)', opt_module.calculate_real_discount_rate(
@@ -68,8 +62,6 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
                     config_params.get('inflation_rate', 2.0)/100),
                 config_params.get('project_lifetime', 25))],
             ['', ''],
-            ['', ''],
-            # Configuration
             ['PV Capacity (kW)', results_dict['pv_capacity'] * 1000],
             ['Wind Capacity (kW)', results_dict['wind_capacity'] * 1000],
             ['Hydro Capacity (kW)', results_dict['hydro_capacity'] * 1000],
@@ -78,11 +70,7 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
             ['Hydro Operating Hours/Day', int(results_dict['hydro_window_end']) - int(results_dict['hydro_window_start'])],
             ['BESS Power (kW)', results_dict['bess_power'] * 1000],
             ['BESS Capacity (kWh)', results_dict['bess_energy'] * 1000],
-            ['BESS Annual Discharge (kWh)', optimal_row.get('BESS_Annual_Discharge_kWh', 0)],
-            ['BESS Cycles Per Year', optimal_row.get('BESS_Cycles_Per_Year', 0)],
             ['', ''],
-            ['', ''],
-            # Financial results
             ['Total NPC ($)', results_dict['npc']],
             ['Total Capital ($)', optimal_row.get('Capital_$', 0)],
             ['Total Replacement ($)', optimal_row.get('Replacement_$', 0)],
@@ -90,39 +78,14 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
             ['Total Salvage ($)', optimal_row.get('Salvage_$', 0)],
             ['Total Annualized ($/year)', optimal_row.get('Annualized_$/yr', 0)],
             ['', ''],
-            ['', ''],
-            # Component NPC
-            ['PV NPC ($)', optimal_row.get('PV_NPC_$', 0)],
-            ['Wind NPC ($)', optimal_row.get('Wind_NPC_$', 0)],
-            ['Hydro NPC ($)', optimal_row.get('Hydro_NPC_$', 0)],
-            ['BESS NPC ($)', optimal_row.get('BESS_NPC_$', 0)],
-            ['', ''],
-            ['', ''],
-            # LCOE
             ['Levelized COE ($/kWh)', optimal_row.get('LCOE_$/kWh', 0)],
             ['Levelized COE ($/MWh)', results_dict['lcoe']],
             ['Unmet Load (%)', results_dict['unmet_pct']],
-            ['Energy Served (kWh/year)', optimal_row.get('Total_Energy_Served_kWh', 0)],
-            ['Energy Served (kWh lifetime)', optimal_row.get('Total_Energy_Served_kWh', 0) * config_params.get('project_lifetime', 25)],
-            ['', ''],
-            ['', ''],
-            # Energy fractions
-            ['PV Fraction (%)', optimal_row.get('PV_Fraction_%', 0)],
-            ['Wind Fraction (%)', optimal_row.get('Wind_Fraction_%', 0)],
-            ['Hydro Fraction (%)', optimal_row.get('Hydro_Fraction_%', 0)],
-            ['Total RE Penetration (%)', optimal_row.get('RE_Penetration_%', 100.0)],
-            ['', ''],
-            ['', ''],
-            # Storage
-            ['BESS Contribution (%)', optimal_row.get('BESS_Contribution_%', 0)],
-            ['Excess Fraction (%)', optimal_row.get('Excess_Fraction_%', 0)],
         ])
         
         pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False, header=False)
         
-        # ================================================================
-        # SHEET 2: Cost_Breakdown
-        # ================================================================
+        # Sheet 2: Cost_Breakdown
         cost_breakdown = pd.DataFrame({
             'Component': ['PV', 'Wind', 'Hydro', 'BESS', 'System'],
             'Capital ($)': [
@@ -170,14 +133,10 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
         })
         cost_breakdown.to_excel(writer, sheet_name='Cost_Breakdown', index=False)
         
-        # ================================================================
-        # SHEET 3: All_Results
-        # ================================================================
+        # Sheet 3: All_Results
         results_df.to_excel(writer, sheet_name='All_Results', index=False)
         
-        # ================================================================
-        # SHEET 4: Feasible_Solutions
-        # ================================================================
+        # Sheet 4: Feasible_Solutions
         feasible = results_df[results_df['Feasible'] == True].sort_values('NPC_$')
         if len(feasible) > 0:
             feasible.to_excel(writer, sheet_name='Feasible_Solutions', index=False)
@@ -185,9 +144,7 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
             pd.DataFrame({'Message': ['No feasible solutions found']}).to_excel(
                 writer, sheet_name='Feasible_Solutions', index=False)
         
-        # ================================================================
-        # SHEET 5: Hydro_Window_Analysis
-        # ================================================================
+        # Sheet 5: Hydro_Window_Analysis
         if results_dict['hydro_capacity'] > 0:
             hydro_window_data = []
             hydro_hours = int(results_dict['hydro_window_end']) - int(results_dict['hydro_window_start'])
@@ -204,9 +161,6 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
                 ['Window Configuration', f"{int(results_dict['hydro_window_start']):02d}:00 - {int(results_dict['hydro_window_end']):02d}:00"],
                 ['Total Possible Windows', 24 - hydro_hours + 1],
                 ['Optimal Window Unmet Load (%)', results_dict['unmet_pct']],
-                ['', ''],
-                ['Note', 'All possible windows were tested'],
-                ['Note', 'This is the window with minimum unmet load'],
             ])
             
             pd.DataFrame(hydro_window_data).to_excel(writer, sheet_name='Hydro_Window_Analysis', index=False, header=False)
@@ -219,91 +173,453 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
 
 
 # ==============================================================================
-# PROFESSIONAL VISUALIZATION CHARTS
+# COST ANALYSIS CHARTS WITH TABLES
 # ==============================================================================
 
-def create_professional_charts(results, dispatch_df=None):
-    """Create professional visualization charts matching industry standards"""
+def create_cost_analysis_charts_with_tables(results, optimal_row):
+    """
+    Create 4 cost chart variations:
+    1. Net Present by Component
+    2. Net Present by Cost Type
+    3. Annualized by Component
+    4. Annualized by Cost Type
+    """
     
-    charts = {}
-    optimal_row = results.get('optimal_row', {})
+    charts_and_tables = {}
     
-    # ============================================================
-    # Chart 1: Cost Breakdown by Component (Bar Chart)
-    # ============================================================
-    fig_cost = go.Figure()
-    
+    # Chart 1: Net Present Cost by Component
     components = ['PV', 'Wind', 'Hydro', 'BESS']
-    capital = [optimal_row.get('PV_Capital_$', 0)/1e6, optimal_row.get('Wind_Capital_$', 0)/1e6,
-               optimal_row.get('Hydro_Capital_$', 0)/1e6, optimal_row.get('BESS_Capital_$', 0)/1e6]
-    replacement = [optimal_row.get('PV_Replacement_$', 0)/1e6, optimal_row.get('Wind_Replacement_$', 0)/1e6,
-                   optimal_row.get('Hydro_Replacement_$', 0)/1e6, optimal_row.get('BESS_Replacement_$', 0)/1e6]
-    om = [optimal_row.get('PV_OM_$', 0)/1e6, optimal_row.get('Wind_OM_$', 0)/1e6,
-          optimal_row.get('Hydro_OM_$', 0)/1e6, optimal_row.get('BESS_OM_$', 0)/1e6]
-    salvage = [-optimal_row.get('PV_Salvage_$', 0)/1e6, -optimal_row.get('Wind_Salvage_$', 0)/1e6,
-               -optimal_row.get('Hydro_Salvage_$', 0)/1e6, -optimal_row.get('BESS_Salvage_$', 0)/1e6]
+    npc_values = [
+        optimal_row.get('PV_NPC_$', 0) / 1e6,
+        optimal_row.get('Wind_NPC_$', 0) / 1e6,
+        optimal_row.get('Hydro_NPC_$', 0) / 1e6,
+        optimal_row.get('BESS_NPC_$', 0) / 1e6
+    ]
     
-    fig_cost.add_trace(go.Bar(name='Capital', x=components, y=capital, marker_color='#2E7D32'))
-    fig_cost.add_trace(go.Bar(name='Replacement', x=components, y=replacement, marker_color='#1976D2'))
-    fig_cost.add_trace(go.Bar(name='O&M', x=components, y=om, marker_color='#F57C00'))
-    fig_cost.add_trace(go.Bar(name='Salvage', x=components, y=salvage, marker_color='#C62828'))
-    
-    fig_cost.update_layout(
-        title='Cost Breakdown by Component',
+    fig1 = go.Figure(data=[
+        go.Bar(
+            x=components, 
+            y=npc_values, 
+            marker_color=['#FDB462', '#80B1D3', '#8DD3C7', '#FB8072'],
+            text=[f'${v:.2f}M' for v in npc_values],
+            textposition='outside'
+        )
+    ])
+    fig1.update_layout(
+        title='Net Present Cost by Component',
         xaxis_title='Component',
-        yaxis_title='Cost ($M)',
-        barmode='relative',
-        height=450,
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        yaxis_title='NPC ($M)',
+        height=400,
+        showlegend=False
     )
-    charts['cost_breakdown'] = fig_cost
     
-    # ============================================================
-    # Chart 2: Cash Flow Over Project Lifetime
-    # ============================================================
+    table1 = pd.DataFrame({
+        'Component': components,
+        'Capital ($)': [
+            f"${optimal_row.get('PV_Capital_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_Capital_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_Capital_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_Capital_$', 0):,.0f}"
+        ],
+        'Replacement ($)': [
+            f"${optimal_row.get('PV_Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_Replacement_$', 0):,.0f}"
+        ],
+        'O&M ($)': [
+            f"${optimal_row.get('PV_OM_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_OM_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_OM_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_OM_$', 0):,.0f}"
+        ],
+        'Salvage ($)': [
+            f"${optimal_row.get('PV_Salvage_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_Salvage_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_Salvage_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_Salvage_$', 0):,.0f}"
+        ],
+        'Total NPC ($)': [
+            f"${optimal_row.get('PV_NPC_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_NPC_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_NPC_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_NPC_$', 0):,.0f}"
+        ]
+    })
+    
+    charts_and_tables['npc_by_component'] = {'chart': fig1, 'table': table1}
+    
+    # Chart 2: Net Present Cost by Cost Type
+    cost_types = ['Capital', 'Replacement', 'O&M', 'Salvage']
+    cost_values = [
+        optimal_row.get('Capital_$', 0) / 1e6,
+        optimal_row.get('Replacement_$', 0) / 1e6,
+        optimal_row.get('OM_$', 0) / 1e6,
+        -optimal_row.get('Salvage_$', 0) / 1e6
+    ]
+    
+    fig2 = go.Figure(data=[
+        go.Bar(
+            x=cost_types,
+            y=cost_values,
+            marker_color=['#2E7D32', '#1976D2', '#F57C00', '#C62828'],
+            text=[f'${v:.2f}M' for v in cost_values],
+            textposition='outside'
+        )
+    ])
+    fig2.update_layout(
+        title='Net Present Cost by Cost Type',
+        xaxis_title='Cost Type',
+        yaxis_title='Cost ($M)',
+        height=400,
+        showlegend=False
+    )
+    
+    table2 = pd.DataFrame({
+        'Cost Type': cost_types,
+        'PV ($)': [
+            f"${optimal_row.get('PV_Capital_$', 0):,.0f}",
+            f"${optimal_row.get('PV_Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('PV_OM_$', 0):,.0f}",
+            f"${optimal_row.get('PV_Salvage_$', 0):,.0f}"
+        ],
+        'Wind ($)': [
+            f"${optimal_row.get('Wind_Capital_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_OM_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_Salvage_$', 0):,.0f}"
+        ],
+        'Hydro ($)': [
+            f"${optimal_row.get('Hydro_Capital_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_OM_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_Salvage_$', 0):,.0f}"
+        ],
+        'BESS ($)': [
+            f"${optimal_row.get('BESS_Capital_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_OM_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_Salvage_$', 0):,.0f}"
+        ],
+        'System Total ($)': [
+            f"${optimal_row.get('Capital_$', 0):,.0f}",
+            f"${optimal_row.get('Replacement_$', 0):,.0f}",
+            f"${optimal_row.get('OM_$', 0):,.0f}",
+            f"${optimal_row.get('Salvage_$', 0):,.0f}"
+        ]
+    })
+    
+    charts_and_tables['npc_by_cost_type'] = {'chart': fig2, 'table': table2}
+    
+    # Chart 3: Annualized Cost by Component
+    annualized_values = [
+        optimal_row.get('PV_Annualized_$/yr', 0) / 1e3,
+        optimal_row.get('Wind_Annualized_$/yr', 0) / 1e3,
+        optimal_row.get('Hydro_Annualized_$/yr', 0) / 1e3,
+        optimal_row.get('BESS_Annualized_$/yr', 0) / 1e3
+    ]
+    
+    fig3 = go.Figure(data=[
+        go.Bar(
+            x=components,
+            y=annualized_values,
+            marker_color=['#FDB462', '#80B1D3', '#8DD3C7', '#FB8072'],
+            text=[f'${v:.1f}K' for v in annualized_values],
+            textposition='outside'
+        )
+    ])
+    fig3.update_layout(
+        title='Annualized Cost by Component',
+        xaxis_title='Component',
+        yaxis_title='Annualized Cost ($K/year)',
+        height=400,
+        showlegend=False
+    )
+    
+    table3 = pd.DataFrame({
+        'Component': components,
+        'Annualized Cost ($/year)': [
+            f"${optimal_row.get('PV_Annualized_$/yr', 0):,.0f}",
+            f"${optimal_row.get('Wind_Annualized_$/yr', 0):,.0f}",
+            f"${optimal_row.get('Hydro_Annualized_$/yr', 0):,.0f}",
+            f"${optimal_row.get('BESS_Annualized_$/yr', 0):,.0f}"
+        ],
+        'NPC ($)': [
+            f"${optimal_row.get('PV_NPC_$', 0):,.0f}",
+            f"${optimal_row.get('Wind_NPC_$', 0):,.0f}",
+            f"${optimal_row.get('Hydro_NPC_$', 0):,.0f}",
+            f"${optimal_row.get('BESS_NPC_$', 0):,.0f}"
+        ]
+    })
+    
+    charts_and_tables['annualized_by_component'] = {'chart': fig3, 'table': table3}
+    
+    # Chart 4: Annualized Cost by Cost Type
+    crf = optimal_row.get('CRF', 0.1)
+    
+    ann_capital = optimal_row.get('Capital_$', 0) * crf / 1e3
+    ann_replacement = optimal_row.get('Replacement_$', 0) * crf / 1e3
+    ann_om = optimal_row.get('OM_$', 0) / optimal_row.get('Real_Discount_Rate_%', 8) / 1e3
+    ann_salvage = -optimal_row.get('Salvage_$', 0) * crf / 1e3
+    
+    fig4 = go.Figure(data=[
+        go.Bar(
+            x=cost_types,
+            y=[ann_capital, ann_replacement, ann_om, ann_salvage],
+            marker_color=['#2E7D32', '#1976D2', '#F57C00', '#C62828'],
+            text=[f'${v:.1f}K' for v in [ann_capital, ann_replacement, ann_om, ann_salvage]],
+            textposition='outside'
+        )
+    ])
+    fig4.update_layout(
+        title='Annualized Cost by Cost Type',
+        xaxis_title='Cost Type',
+        yaxis_title='Annualized Cost ($K/year)',
+        height=400,
+        showlegend=False
+    )
+    
+    table4 = pd.DataFrame({
+        'Cost Type': cost_types,
+        'Annualized ($/year)': [
+            f"${ann_capital*1000:,.0f}",
+            f"${ann_replacement*1000:,.0f}",
+            f"${ann_om*1000:,.0f}",
+            f"${ann_salvage*1000:,.0f}"
+        ],
+        'Total Annualized ($/year)': [
+            f"${optimal_row.get('Annualized_$/yr', 0):,.0f}",
+            "-",
+            "-",
+            "-"
+        ]
+    })
+    
+    charts_and_tables['annualized_by_cost_type'] = {'chart': fig4, 'table': table4}
+    
+    return charts_and_tables
+
+
+# ==============================================================================
+# FIXED CASH FLOW CHART
+# ==============================================================================
+
+def create_fixed_cash_flow_chart(results, optimal_row):
+    """
+    Create CORRECTED cash flow chart where:
+    - Capital, Operating, Replacement are NEGATIVE (outflows from bottom)
+    - Salvage is POSITIVE (inflow)
+    """
+    
     project_lifetime = results.get('config_params', {}).get('project_lifetime', 25)
     years = list(range(0, project_lifetime + 1))
     
-    # Simplified cash flow (you can enhance based on actual replacement schedule)
-    capital_flow = [optimal_row.get('Capital_$', 0)/1e6 if y == 0 else 0 for y in years]
-    om_flow = [0 if y == 0 else optimal_row.get('Annualized_$/yr', 0)/1e6 * 0.15 for y in years]  # Approximate O&M portion
+    # Initialize cash flows
+    capital_flow = [0] * len(years)
+    operating_flow = [0] * len(years)
     replacement_flow = [0] * len(years)
-    # Add replacement at specific years (simplified)
-    for y in [10, 15, 20]:
-        if y <= project_lifetime:
-            replacement_flow[y] = optimal_row.get('Replacement_$', 0)/1e6 * 0.3
-    
     salvage_flow = [0] * len(years)
-    salvage_flow[-1] = -optimal_row.get('Salvage_$', 0)/1e6
     
-    fig_cashflow = go.Figure()
-    fig_cashflow.add_trace(go.Bar(name='Capital', x=years, y=capital_flow, marker_color='#2E7D32'))
-    fig_cashflow.add_trace(go.Bar(name='Operating', x=years, y=om_flow, marker_color='#F57C00'))
-    fig_cashflow.add_trace(go.Bar(name='Replacement', x=years, y=replacement_flow, marker_color='#1976D2'))
-    fig_cashflow.add_trace(go.Bar(name='Salvage', x=years, y=salvage_flow, marker_color='#C62828'))
+    # Year 0: Capital costs (NEGATIVE)
+    capital_flow[0] = -optimal_row.get('Capital_$', 0) / 1e6
     
-    fig_cashflow.update_layout(
+    # Annual O&M (NEGATIVE)
+    annual_om = optimal_row.get('OM_$', 0) / project_lifetime / 1e6
+    for year in range(1, project_lifetime + 1):
+        operating_flow[year] = -annual_om
+    
+    # Replacements (NEGATIVE) - simplified schedule
+    bess_lifetime = 10
+    wind_lifetime = 20
+    
+    bess_replacement = optimal_row.get('BESS_Replacement_$', 0) / 1e6
+    wind_replacement = optimal_row.get('Wind_Replacement_$', 0) / 1e6
+    
+    for year in years:
+        if year > 0:
+            if year % bess_lifetime == 0 and year < project_lifetime:
+                replacement_flow[year] -= bess_replacement * 0.5
+            if year % wind_lifetime == 0 and year < project_lifetime:
+                replacement_flow[year] -= wind_replacement * 0.5
+    
+    # Final year: Salvage value (POSITIVE)
+    salvage_flow[-1] = optimal_row.get('Salvage_$', 0) / 1e6
+    
+    # Create stacked bar chart
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        name='Capital',
+        x=years,
+        y=capital_flow,
+        marker_color='#2E7D32'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Operating',
+        x=years,
+        y=operating_flow,
+        marker_color='#F57C00'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Replacement',
+        x=years,
+        y=replacement_flow,
+        marker_color='#1976D2'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Salvage',
+        x=years,
+        y=salvage_flow,
+        marker_color='#388E3C'
+    ))
+    
+    fig.update_layout(
         title='Nominal Cash Flow',
         xaxis_title='Year',
         yaxis_title='Cash Flow ($M)',
         barmode='relative',
         height=450,
-        showlegend=True
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    charts['cash_flow'] = fig_cashflow
     
-    # ============================================================
-    # Chart 3: Monthly Electric Production (Stacked Bar)
-    # ============================================================
+    # Create data table
+    cash_flow_table = pd.DataFrame({
+        'Year': years[:10],
+        'Capital ($M)': [f"${v:.2f}" for v in capital_flow[:10]],
+        'Operating ($M)': [f"${v:.2f}" for v in operating_flow[:10]],
+        'Replacement ($M)': [f"${v:.2f}" for v in replacement_flow[:10]],
+        'Salvage ($M)': [f"${v:.2f}" for v in salvage_flow[:10]],
+        'Net Cash Flow ($M)': [
+            f"${capital_flow[i] + operating_flow[i] + replacement_flow[i] + salvage_flow[i]:.2f}"
+            for i in range(10)
+        ]
+    })
+    
+    return fig, cash_flow_table
+
+
+# ==============================================================================
+# ELECTRICAL METRICS TABLES
+# ==============================================================================
+
+def create_electrical_metrics_tables(electrical_metrics):
+    """Create formatted tables for electrical metrics of each component."""
+    
+    tables = {}
+    
+    if electrical_metrics:
+        # PV Table
+        pv_data = pd.DataFrame({
+            'Metric': [
+                'Rated Capacity',
+                'Mean Output',
+                'Capacity Factor',
+                'Total Production',
+                'Hours of Operation',
+                'Levelized Cost'
+            ],
+            'Value': [
+                f"{electrical_metrics['pv']['rated_capacity_kw']:,.1f} kW",
+                f"{electrical_metrics['pv']['mean_output_kw']:,.1f} kW",
+                f"{electrical_metrics['pv']['capacity_factor_pct']:.2f}%",
+                f"{electrical_metrics['pv']['total_production_kwh']:,.0f} kWh/yr",
+                f"{electrical_metrics['pv']['hours_of_operation']:,.0f} hrs/yr",
+                f"${electrical_metrics['pv']['levelized_cost_per_kwh']:.4f}/kWh"
+            ]
+        })
+        tables['pv'] = pv_data
+        
+        # Wind Table
+        wind_data = pd.DataFrame({
+            'Metric': [
+                'Rated Capacity',
+                'Mean Output',
+                'Capacity Factor',
+                'Total Production',
+                'Hours of Operation',
+                'Levelized Cost'
+            ],
+            'Value': [
+                f"{electrical_metrics['wind']['rated_capacity_kw']:,.1f} kW",
+                f"{electrical_metrics['wind']['mean_output_kw']:,.1f} kW",
+                f"{electrical_metrics['wind']['capacity_factor_pct']:.2f}%",
+                f"{electrical_metrics['wind']['total_production_kwh']:,.0f} kWh/yr",
+                f"{electrical_metrics['wind']['hours_of_operation']:,.0f} hrs/yr",
+                f"${electrical_metrics['wind']['levelized_cost_per_kwh']:.4f}/kWh"
+            ]
+        })
+        tables['wind'] = wind_data
+        
+        # Hydro Table
+        hydro_data = pd.DataFrame({
+            'Metric': [
+                'Rated Capacity',
+                'Mean Output',
+                'Capacity Factor',
+                'Total Production',
+                'Hours of Operation',
+                'Levelized Cost'
+            ],
+            'Value': [
+                f"{electrical_metrics['hydro']['rated_capacity_kw']:,.1f} kW",
+                f"{electrical_metrics['hydro']['mean_output_kw']:,.1f} kW",
+                f"{electrical_metrics['hydro']['capacity_factor_pct']:.2f}%",
+                f"{electrical_metrics['hydro']['total_production_kwh']:,.0f} kWh/yr",
+                f"{electrical_metrics['hydro']['hours_of_operation']:,.0f} hrs/yr",
+                f"${electrical_metrics['hydro']['levelized_cost_per_kwh']:.4f}/kWh"
+            ]
+        })
+        tables['hydro'] = hydro_data
+        
+        # BESS Table
+        bess_data = pd.DataFrame({
+            'Metric': [
+                'Nominal Capacity',
+                'Usable Capacity',
+                'Autonomy',
+                'Energy In',
+                'Energy Out',
+                'Losses',
+                'Annual Throughput',
+                'Expected Life'
+            ],
+            'Value': [
+                f"{electrical_metrics['bess']['nominal_capacity_kwh']:,.1f} kWh",
+                f"{electrical_metrics['bess']['usable_capacity_kwh']:,.1f} kWh",
+                f"{electrical_metrics['bess']['autonomy_hours']:.2f} hours",
+                f"{electrical_metrics['bess']['energy_in_kwh']:,.0f} kWh/yr",
+                f"{electrical_metrics['bess']['energy_out_kwh']:,.0f} kWh/yr",
+                f"{electrical_metrics['bess']['losses_kwh']:,.0f} kWh/yr",
+                f"{electrical_metrics['bess']['annual_throughput_kwh']:,.0f} kWh/yr",
+                f"{electrical_metrics['bess']['expected_life_years']:.0f} years"
+            ]
+        })
+        tables['bess'] = bess_data
+    
+    return tables
+
+
+# ==============================================================================
+# ADDITIONAL SIMPLE CHARTS
+# ==============================================================================
+
+def create_additional_charts(results):
+    """Create monthly production and energy mix charts."""
+    
+    charts = {}
+    optimal_row = results.get('optimal_row', {})
+    
+    # Monthly Electric Production
     months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     
-    # Simulate monthly production from annual fractions
-    pv_annual = optimal_row.get('PV_Energy_kWh', 0) / 1000  # MWh
+    pv_annual = optimal_row.get('PV_Energy_kWh', 0) / 1000
     wind_annual = optimal_row.get('Wind_Energy_kWh', 0) / 1000
     hydro_annual = optimal_row.get('Hydro_Energy_kWh', 0) / 1000
     
-    # Create seasonal variation
     pv_monthly = [pv_annual/12 * (1 + 0.3 * np.sin((i - 3) * np.pi / 6)) for i in range(12)]
     wind_monthly = [wind_annual/12 * (1 + 0.2 * np.cos(i * np.pi / 6)) for i in range(12)]
     hydro_monthly = [hydro_annual/12 for i in range(12)]
@@ -323,9 +639,7 @@ def create_professional_charts(results, dispatch_df=None):
     )
     charts['monthly_production'] = fig_monthly
     
-    # ============================================================
-    # Chart 4: Renewable Penetration Pie Chart
-    # ============================================================
+    # Energy Mix Pie Chart
     pv_frac = optimal_row.get('PV_Fraction_%', 0)
     wind_frac = optimal_row.get('Wind_Fraction_%', 0)
     hydro_frac = optimal_row.get('Hydro_Fraction_%', 0)
@@ -344,90 +658,6 @@ def create_professional_charts(results, dispatch_df=None):
         showlegend=True
     )
     charts['energy_mix'] = fig_pie
-    
-    # ============================================================
-    # Chart 5: Component NPC Comparison
-    # ============================================================
-    npc_values = [
-        optimal_row.get('PV_NPC_$', 0)/1e6,
-        optimal_row.get('Wind_NPC_$', 0)/1e6,
-        optimal_row.get('Hydro_NPC_$', 0)/1e6,
-        optimal_row.get('BESS_NPC_$', 0)/1e6
-    ]
-    
-    fig_npc = go.Figure(data=[
-        go.Bar(x=components, y=npc_values, marker_color=['#FDB462', '#80B1D3', '#8DD3C7', '#FB8072'],
-               text=[f'${v:.2f}M' for v in npc_values], textposition='outside')
-    ])
-    
-    fig_npc.update_layout(
-        title='Net Present Cost by Component',
-        xaxis_title='Component',
-        yaxis_title='NPC ($M)',
-        height=450,
-        showlegend=False
-    )
-    charts['npc_comparison'] = fig_npc
-    
-    # ============================================================
-    # Chart 6: System Performance Metrics (Gauge Charts)
-    # ============================================================
-    re_penetration = optimal_row.get('RE_Penetration_%', 100)
-    unmet_pct = results.get('unmet_pct', 0)
-    target_unmet = results.get('config_params', {}).get('target_unmet_percent', 0.1)
-    
-    fig_gauges = make_subplots(
-        rows=1, cols=2,
-        specs=[[{'type': 'indicator'}, {'type': 'indicator'}]],
-        subplot_titles=('Renewable Penetration', 'Unmet Load')
-    )
-    
-    fig_gauges.add_trace(go.Indicator(
-        mode="gauge+number+delta",
-        value=re_penetration,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "RE Penetration (%)"},
-        delta={'reference': 100},
-        gauge={
-            'axis': {'range': [None, 100]},
-            'bar': {'color': "#2E7D32"},
-            'steps': [
-                {'range': [0, 50], 'color': "#FFE0B2"},
-                {'range': [50, 80], 'color': "#FFCC80"},
-                {'range': [80, 100], 'color': "#FFA726"}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 95
-            }
-        }
-    ), row=1, col=1)
-    
-    fig_gauges.add_trace(go.Indicator(
-        mode="gauge+number+delta",
-        value=unmet_pct,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Unmet Load (%)"},
-        delta={'reference': target_unmet},
-        gauge={
-            'axis': {'range': [0, 5]},
-            'bar': {'color': "#1976D2"},
-            'steps': [
-                {'range': [0, target_unmet], 'color': "#C8E6C9"},
-                {'range': [target_unmet, 1.0], 'color': "#FFF9C4"},
-                {'range': [1.0, 5], 'color': "#FFCDD2"}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': target_unmet
-            }
-        }
-    ), row=1, col=2)
-    
-    fig_gauges.update_layout(height=350)
-    charts['performance_gauges'] = fig_gauges
     
     return charts
 
@@ -600,6 +830,7 @@ with tab1:
     
     st.info(f"**Total Search Space:** {total_combinations:,} combinations")
 
+
 # TAB 2: OPTIMIZE
 with tab2:
     st.header("⚙️ Run Optimization")
@@ -650,20 +881,20 @@ with tab2:
                 if hydro_file:
                     hydro_df = pd.read_csv(hydro_file) if hydro_file.name.endswith('.csv') else pd.read_excel(hydro_file)
                 
-                # Build Excel
+                # Build Excel input file
                 status_text.text("🔨 Building input file...")
                 progress_bar.progress(15)
                 
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    # Configuration
+                    # Configuration sheet
                     pd.DataFrame({
                         'Parameter': ['Simulation Hours', 'Target Unmet Load (%)', 'Optimization Method',
                                      'Discount Rate (%)', 'Inflation Rate (%)', 'Project Lifetime (years)', 'Use Dynamic LCOE'],
                         'Value': [8760, target_unmet_percent, 'GRID_SEARCH', discount_rate, inflation_rate, project_lifetime, 'NO']
                     }).to_excel(writer, sheet_name='Configuration', index=False)
                     
-                    # Grid_Search_Config
+                    # Grid Search Config
                     pd.DataFrame({
                         'Parameter': ['Enable Grid Search', 'PV Search Start', 'PV Search End', 'PV Search Step',
                                      'Wind Search Start', 'Wind Search End', 'Wind Search Step',
@@ -675,7 +906,7 @@ with tab2:
                                  100000000, 'NPC', 5]
                     }).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
                     
-                    # Solar_PV
+                    # Solar PV
                     pd.DataFrame({
                         'Parameter': ['LCOE', 'PVsyst Baseline', 'Capex', 'O&M Cost', 'Lifetime'],
                         'Value': [pv_lcoe, 1.0, pv_capex, pv_opex, pv_lifetime]
@@ -728,24 +959,55 @@ with tab2:
                 
                 if len(result) == 9:
                     config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
-                    hydro_profile_opt = None
                 else:
-                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile, hydro_profile_opt = result
+                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
                 
                 results_df = opt_module.grid_search_optimize_hydro(
                     config, grid_config, solar, wind, hydro, bess,
-                    load_profile, pvsyst_profile, wind_profile, hydro_profile_opt
+                    load_profile, pvsyst_profile, wind_profile, None
                 )
                 
                 progress_bar.progress(85)
                 optimal = opt_module.find_optimal_solution(results_df)
-                progress_bar.progress(100)
-                
-                # Clean up
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
+                progress_bar.progress(90)
                 
                 if optimal is not None:
+                    # Calculate electrical metrics
+                    optimal_dispatch = opt_module.calculate_dispatch_with_hydro(
+                        load_profile, pvsyst_profile, wind_profile,
+                        optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
+                        optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
+                        solar, wind, hydro, bess,
+                        int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
+                    )
+                    
+                    component_capacities = {
+                        'pv_kw': optimal['PV_kW'],
+                        'wind_kw': optimal['Wind_kW'],
+                        'hydro_kw': optimal['Hydro_kW'],
+                        'bess_kwh': optimal['BESS_Capacity_kWh']
+                    }
+                    
+                    component_configs = {
+                        'pv_lcoe': pv_lcoe,
+                        'wind_lcoe': wind_lcoe,
+                        'hydro_lcoe': hydro_lcoe,
+                        'bess_max_soc': bess_max_soc / 100,
+                        'bess_min_soc': bess_min_soc / 100,
+                        'bess_lifetime': bess_lifetime
+                    }
+                    
+                    electrical_metrics = opt_module.calculate_electrical_metrics(
+                        optimal_dispatch, component_capacities, component_configs
+                    )
+                    
+                    progress_bar.progress(100)
+                    
+                    # Clean up temp file
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                    
+                    # Store results in session state
                     st.session_state.results = {
                         'pv_capacity': optimal['PV_kW'] / 1000,
                         'wind_capacity': optimal['Wind_kW'] / 1000,
@@ -763,6 +1025,7 @@ with tab2:
                         'bess_npc': optimal.get('BESS_NPC_$', 0),
                         'results_df': results_df,
                         'optimal_row': optimal.to_dict(),
+                        'electrical_metrics': electrical_metrics,
                         'config_params': {
                             'discount_rate': discount_rate,
                             'inflation_rate': inflation_rate,
@@ -774,94 +1037,224 @@ with tab2:
                     st.session_state.optimization_complete = True
                     st.success("✅ Optimization Complete!")
                     st.balloons()
-                    st.info("👉 Go to **Results** tab")
+                    st.info("👉 Go to **Results** tab to view detailed analysis")
                 else:
-                    st.error("❌ No optimal solution found")
+                    st.error("❌ No optimal solution found. Try relaxing constraints.")
                     
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+                st.error(f"❌ Error during optimization: {str(e)}")
                 st.exception(e)
 
 # TAB 3: RESULTS
 with tab3:
     if not st.session_state.optimization_complete:
-        st.info("ℹ️ No results yet. Run optimization first.")
+        st.info("ℹ️ No results available yet. Please run optimization in the **Optimize** tab first.")
     else:
         st.header("📊 Optimization Results")
         
         results = st.session_state.results
+        optimal_row = results.get('optimal_row', {})
         
-        # Key metrics in cards
-        col1, col2, col3, col4 = st.columns(4)
+        # ============================================================
+        # ENHANCED KEY METRICS DISPLAY (with individual LCOE)
+        # ============================================================
+        st.subheader("🎯 System Overview")
+        
+        # Row 1: Financial Metrics
+        col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total NPC", f"${results['npc']/1e6:.2f}M", 
+            st.metric("💰 Total NPC", 
+                     f"${results['npc']/1e6:.2f}M", 
                      help="Total Net Present Cost over project lifetime")
         with col2:
-            st.metric("System LCOE", f"${results['lcoe']:.2f}/MWh",
-                     help="Levelized Cost of Energy")
+            st.metric("⚡ System LCOE", 
+                     f"${results['lcoe']:.2f}/MWh",
+                     help="System-wide Levelized Cost of Energy")
         with col3:
-            st.metric("PV Capacity", f"{results['pv_capacity']:.1f} MW",
-                     help="Optimal Solar PV capacity")
+            st.metric("📉 Unmet Load", 
+                     f"{results['unmet_pct']:.3f}%",
+                     help="Percentage of load not met by the system")
+        
+        st.markdown("---")
+        
+        # Row 2: Component Capacities & Individual LCOE
+        st.subheader("🔋 Component Configuration")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown("**☀️ Solar PV**")
+            st.metric("Capacity", f"{results['pv_capacity']:.2f} MW")
+            if 'electrical_metrics' in results and results['electrical_metrics']:
+                pv_lcoe = results['electrical_metrics']['pv']['levelized_cost_per_kwh'] * 1000
+                st.metric("LCOE", f"${pv_lcoe:.2f}/MWh")
+            else:
+                st.metric("LCOE", f"${pv_lcoe:.2f}/MWh")
+        
+        with col2:
+            st.markdown("**💨 Wind**")
+            st.metric("Capacity", f"{results['wind_capacity']:.2f} MW")
+            if 'electrical_metrics' in results and results['electrical_metrics']:
+                wind_lcoe = results['electrical_metrics']['wind']['levelized_cost_per_kwh'] * 1000
+                st.metric("LCOE", f"${wind_lcoe:.2f}/MWh")
+            else:
+                st.metric("LCOE", f"${wind_lcoe:.2f}/MWh")
+        
+        with col3:
+            st.markdown("**💧 Hydro**")
+            st.metric("Capacity", f"{results['hydro_capacity']:.2f} MW")
+            if 'electrical_metrics' in results and results['electrical_metrics']:
+                hydro_lcoe = results['electrical_metrics']['hydro']['levelized_cost_per_kwh'] * 1000
+                st.metric("LCOE", f"${hydro_lcoe:.2f}/MWh")
+            else:
+                st.metric("LCOE", f"${hydro_lcoe:.2f}/MWh")
+            st.caption(f"Window: {int(results['hydro_window_start']):02d}:00 - {int(results['hydro_window_end']):02d}:00")
+        
         with col4:
-            st.metric("Unmet Load", f"{results['unmet_pct']:.2f}%",
-                     help="Percentage of load not met")
+            st.markdown("**🔋 Battery**")
+            st.metric("Power", f"{results['bess_power']:.2f} MW")
+            st.metric("Energy", f"{results['bess_energy']:.2f} MWh")
+            st.caption(f"Duration: {results['bess_energy']/results['bess_power']:.1f}h" if results['bess_power'] > 0 else "Duration: N/A")
         
         st.markdown("---")
         
-        # Optimal Configuration Table
-        st.subheader("⚡ Optimal Configuration")
-        config_data = pd.DataFrame({
-            'Component': ['Solar PV', 'Wind', 'Hydro', 'BESS Power', 'BESS Energy'],
-            'Capacity': [
-                f"{results['pv_capacity']:.1f} MW",
-                f"{results['wind_capacity']:.1f} MW",
-                f"{results['hydro_capacity']:.1f} MW",
-                f"{results['bess_power']:.1f} MW",
-                f"{results['bess_energy']:.1f} MWh"
-            ],
-            'NPC ($M)': [
-                f"${results['pv_npc']/1e6:.2f}",
-                f"${results['wind_npc']/1e6:.2f}",
-                f"${results['hydro_npc']/1e6:.2f}",
-                f"${results['bess_npc']/1e6:.2f}",
-                "(included in BESS Power)"
-            ]
-        })
-        st.dataframe(config_data, use_container_width=True, hide_index=True)
+        # ============================================================
+        # COST ANALYSIS SECTION
+        # ============================================================
+        st.subheader("💰 Cost Analysis")
         
-        st.info(f"💧 **Hydro Operating Window:** {int(results['hydro_window_start']):02d}:00 - {int(results['hydro_window_end']):02d}:00")
+        cost_charts = create_cost_analysis_charts_with_tables(results, optimal_row)
+        
+        # Row 1: Net Present Cost
+        st.markdown("#### Net Present Cost")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**By Component**")
+            st.plotly_chart(cost_charts['npc_by_component']['chart'], use_container_width=True)
+            st.dataframe(cost_charts['npc_by_component']['table'], use_container_width=True, hide_index=True)
+        
+        with col2:
+            st.markdown("**By Cost Type**")
+            st.plotly_chart(cost_charts['npc_by_cost_type']['chart'], use_container_width=True)
+            st.dataframe(cost_charts['npc_by_cost_type']['table'], use_container_width=True, hide_index=True)
         
         st.markdown("---")
         
-        # Professional Visualization Charts
-        st.subheader("📈 System Analysis")
-        
-        charts = create_professional_charts(results)
-        
-        # Row 1: Cost Analysis
+        # Row 2: Annualized Cost
+        st.markdown("#### Annualized Cost")
         col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(charts['cost_breakdown'], use_container_width=True)
-        with col2:
-            st.plotly_chart(charts['cash_flow'], use_container_width=True)
         
-        # Row 2: Energy Production
-        col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(charts['monthly_production'], use_container_width=True)
-        with col2:
-            st.plotly_chart(charts['energy_mix'], use_container_width=True)
+            st.markdown("**By Component**")
+            st.plotly_chart(cost_charts['annualized_by_component']['chart'], use_container_width=True)
+            st.dataframe(cost_charts['annualized_by_component']['table'], use_container_width=True, hide_index=True)
         
-        # Row 3: Performance Metrics
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(charts['npc_comparison'], use_container_width=True)
         with col2:
-            st.plotly_chart(charts['performance_gauges'], use_container_width=True)
+            st.markdown("**By Cost Type**")
+            st.plotly_chart(cost_charts['annualized_by_cost_type']['chart'], use_container_width=True)
+            st.dataframe(cost_charts['annualized_by_cost_type']['table'], use_container_width=True, hide_index=True)
         
         st.markdown("---")
         
-        # Download Section
+        # ============================================================
+        # CASH FLOW SECTION
+        # ============================================================
+        st.subheader("💵 Cash Flow Analysis")
+        
+        cash_flow_fig, cash_flow_table = create_fixed_cash_flow_chart(results, optimal_row)
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.plotly_chart(cash_flow_fig, use_container_width=True)
+        with col2:
+            st.markdown("**Cash Flow Summary (First 10 Years)**")
+            st.dataframe(cash_flow_table, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # ELECTRICAL PERFORMANCE METRICS SECTION
+        # ============================================================
+        st.subheader("⚡ Electrical Performance Metrics")
+        
+        if 'electrical_metrics' in results and results['electrical_metrics']:
+            elec_tables = create_electrical_metrics_tables(results['electrical_metrics'])
+            
+            # Row 1: PV and Wind
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**☀️ Solar PV**")
+                st.dataframe(elec_tables['pv'], use_container_width=True, hide_index=True)
+            
+            with col2:
+                st.markdown("**💨 Wind**")
+                st.dataframe(elec_tables['wind'], use_container_width=True, hide_index=True)
+            
+            # Row 2: Hydro and BESS
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**💧 Hydro**")
+                st.dataframe(elec_tables['hydro'], use_container_width=True, hide_index=True)
+            
+            with col2:
+                st.markdown("**🔋 Battery Storage**")
+                st.dataframe(elec_tables['bess'], use_container_width=True, hide_index=True)
+            
+            # Row 3: System Performance (Excess Electricity, Unmet Load, Capacity Shortage)
+            st.markdown("---")
+            st.markdown("**⚙️ System Performance**")
+            
+            # Calculate system metrics
+            total_load = optimal_row.get('Total_Load_kWh', 0)
+            excess_kwh = optimal_row.get('Excess_kWh', 0)
+            unmet_kwh = optimal_row.get('Unmet_kWh', 0)
+            capacity_shortage_kwh = unmet_kwh  # Simplified assumption
+            
+            system_metrics = pd.DataFrame({
+                'Metric': [
+                    'Excess Electricity (kWh/yr)',
+                    'Excess Electricity (%)',
+                    'Unmet Electric Load (kWh/yr)',
+                    'Unmet Electric Load (%)',
+                    'Capacity Shortage (kWh/yr)',
+                    'Capacity Shortage (%)'
+                ],
+                'Value': [
+                    f"{excess_kwh:,.0f}",
+                    f"{(excess_kwh / total_load * 100) if total_load > 0 else 0:.2f}",
+                    f"{unmet_kwh:,.0f}",
+                    f"{(unmet_kwh / total_load * 100) if total_load > 0 else 0:.2f}",
+                    f"{capacity_shortage_kwh:,.0f}",
+                    f"{(capacity_shortage_kwh / total_load * 100) if total_load > 0 else 0:.2f}"
+                ]
+            })
+            
+            st.dataframe(system_metrics, use_container_width=True, hide_index=True)
+            
+        else:
+            st.warning("⚠️ Electrical metrics not available. Please re-run optimization with updated code.")
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # ADDITIONAL ANALYSIS
+        # ============================================================
+        st.subheader("📊 Additional Analysis")
+        
+        additional_charts = create_additional_charts(results)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(additional_charts['monthly_production'], use_container_width=True)
+        with col2:
+            st.plotly_chart(additional_charts['energy_mix'], use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # DOWNLOAD SECTION
+        # ============================================================
         st.subheader("📥 Download Results")
         
         config_params = results.get('config_params', {
@@ -892,3 +1285,4 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>Renewable Energy Optimization Tool v3.0 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
