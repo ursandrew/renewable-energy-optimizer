@@ -2,8 +2,8 @@
 RENEWABLE ENERGY OPTIMIZATION TOOL - PRODUCTION VERSION
 ========================================================
 Features:
-- Excel export matching Anaconda format exactly
-- Enhanced HOMER-style visualization
+- Excel export matching industry standard format
+- Enhanced professional visualization
 - Hydro Window Analysis sheet
 - Professional results dashboard
 """
@@ -13,6 +13,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 from datetime import datetime
 import os
 from io import BytesIO
@@ -27,20 +28,19 @@ except ImportError:
 
 
 # ==============================================================================
-# ENHANCED EXCEL EXPORT - Exact Anaconda Format
+# ENHANCED EXCEL EXPORT - Industry Standard Format
 # ==============================================================================
 
-def export_results_anaconda_format(results_dict, results_df, optimal_row, config_params):
+def export_results_industry_format(results_dict, results_df, optimal_row, config_params):
     """
-    Export results matching Anaconda Excel format EXACTLY.
-    Based on screenshots provided.
+    Export results matching industry standard Excel format.
     """
     output = BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
         # ================================================================
-        # SHEET 1: Summary - Exact Anaconda Format
+        # SHEET 1: Summary - Industry Standard Format
         # ================================================================
         summary_data = []
         
@@ -48,7 +48,7 @@ def export_results_anaconda_format(results_dict, results_df, optimal_row, config
         summary_data.extend([
             ['Parameter', 'Value'],
             ['Optimization Method', 'GRID_SEARCH'],
-            ['NPC Calculation Method', 'HOMER PRO'],
+            ['NPC Calculation Method', 'Present Value Analysis'],
             ['LCOE Mode', 'STATIC'],
             ['Target Unmet Load (%)', config_params.get('target_unmet_percent', 0.1)],
             ['Total Combinations Tested', len(results_df)],
@@ -121,7 +121,7 @@ def export_results_anaconda_format(results_dict, results_df, optimal_row, config
         pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False, header=False)
         
         # ================================================================
-        # SHEET 2: Cost_Breakdown - Exact Anaconda Format
+        # SHEET 2: Cost_Breakdown
         # ================================================================
         cost_breakdown = pd.DataFrame({
             'Component': ['PV', 'Wind', 'Hydro', 'BESS', 'System'],
@@ -219,142 +219,217 @@ def export_results_anaconda_format(results_dict, results_df, optimal_row, config
 
 
 # ==============================================================================
-# HOMER-STYLE CHARTS
+# PROFESSIONAL VISUALIZATION CHARTS
 # ==============================================================================
 
-def create_homer_style_charts(results):
-    """Create HOMER-style visualization charts"""
+def create_professional_charts(results, dispatch_df=None):
+    """Create professional visualization charts matching industry standards"""
     
-    # Chart 1: Cost Breakdown Waterfall
-    fig_waterfall = go.Figure(go.Waterfall(
-        name="Cost Components",
-        orientation="v",
-        measure=["relative", "relative", "relative", "relative", "relative", "total"],
-        x=["PV", "Wind", "Hydro", "BESS", "Salvage", "Total NPC"],
-        y=[
-            results['pv_npc'],
-            results['wind_npc'],
-            results['hydro_npc'],
-            results['bess_npc'],
-            -results.get('optimal_row', {}).get('Salvage_$', 0),
-            results['npc']
-        ],
-        connector={"line": {"color": "rgb(63, 63, 63)"}},
-    ))
-    fig_waterfall.update_layout(
-        title="NPC Breakdown (HOMER Style)",
-        showlegend=False,
-        height=400,
-        yaxis_title="Cost ($)"
-    )
-    
-    # Chart 2: Energy Production by Source (Stacked Area)
+    charts = {}
     optimal_row = results.get('optimal_row', {})
-    pv_fraction = optimal_row.get('PV_Fraction_%', 0)
-    wind_fraction = optimal_row.get('Wind_Fraction_%', 0)
-    hydro_fraction = optimal_row.get('Hydro_Fraction_%', 0)
     
-    fig_energy = go.Figure()
-    fig_energy.add_trace(go.Bar(
-        name='PV',
-        x=['Energy Mix'],
-        y=[pv_fraction],
-        marker_color='#FDB462'
-    ))
-    fig_energy.add_trace(go.Bar(
-        name='Wind',
-        x=['Energy Mix'],
-        y=[wind_fraction],
-        marker_color='#80B1D3'
-    ))
-    fig_energy.add_trace(go.Bar(
-        name='Hydro',
-        x=['Energy Mix'],
-        y=[hydro_fraction],
-        marker_color='#8DD3C7'
-    ))
+    # ============================================================
+    # Chart 1: Cost Breakdown by Component (Bar Chart)
+    # ============================================================
+    fig_cost = go.Figure()
     
-    fig_energy.update_layout(
-        barmode='stack',
-        title='Energy Production Mix (%)',
-        yaxis_title='Percentage (%)',
-        height=400,
+    components = ['PV', 'Wind', 'Hydro', 'BESS']
+    capital = [optimal_row.get('PV_Capital_$', 0)/1e6, optimal_row.get('Wind_Capital_$', 0)/1e6,
+               optimal_row.get('Hydro_Capital_$', 0)/1e6, optimal_row.get('BESS_Capital_$', 0)/1e6]
+    replacement = [optimal_row.get('PV_Replacement_$', 0)/1e6, optimal_row.get('Wind_Replacement_$', 0)/1e6,
+                   optimal_row.get('Hydro_Replacement_$', 0)/1e6, optimal_row.get('BESS_Replacement_$', 0)/1e6]
+    om = [optimal_row.get('PV_OM_$', 0)/1e6, optimal_row.get('Wind_OM_$', 0)/1e6,
+          optimal_row.get('Hydro_OM_$', 0)/1e6, optimal_row.get('BESS_OM_$', 0)/1e6]
+    salvage = [-optimal_row.get('PV_Salvage_$', 0)/1e6, -optimal_row.get('Wind_Salvage_$', 0)/1e6,
+               -optimal_row.get('Hydro_Salvage_$', 0)/1e6, -optimal_row.get('BESS_Salvage_$', 0)/1e6]
+    
+    fig_cost.add_trace(go.Bar(name='Capital', x=components, y=capital, marker_color='#2E7D32'))
+    fig_cost.add_trace(go.Bar(name='Replacement', x=components, y=replacement, marker_color='#1976D2'))
+    fig_cost.add_trace(go.Bar(name='O&M', x=components, y=om, marker_color='#F57C00'))
+    fig_cost.add_trace(go.Bar(name='Salvage', x=components, y=salvage, marker_color='#C62828'))
+    
+    fig_cost.update_layout(
+        title='Cost Breakdown by Component',
+        xaxis_title='Component',
+        yaxis_title='Cost ($M)',
+        barmode='relative',
+        height=450,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    charts['cost_breakdown'] = fig_cost
+    
+    # ============================================================
+    # Chart 2: Cash Flow Over Project Lifetime
+    # ============================================================
+    project_lifetime = results.get('config_params', {}).get('project_lifetime', 25)
+    years = list(range(0, project_lifetime + 1))
+    
+    # Simplified cash flow (you can enhance based on actual replacement schedule)
+    capital_flow = [optimal_row.get('Capital_$', 0)/1e6 if y == 0 else 0 for y in years]
+    om_flow = [0 if y == 0 else optimal_row.get('Annualized_$/yr', 0)/1e6 * 0.15 for y in years]  # Approximate O&M portion
+    replacement_flow = [0] * len(years)
+    # Add replacement at specific years (simplified)
+    for y in [10, 15, 20]:
+        if y <= project_lifetime:
+            replacement_flow[y] = optimal_row.get('Replacement_$', 0)/1e6 * 0.3
+    
+    salvage_flow = [0] * len(years)
+    salvage_flow[-1] = -optimal_row.get('Salvage_$', 0)/1e6
+    
+    fig_cashflow = go.Figure()
+    fig_cashflow.add_trace(go.Bar(name='Capital', x=years, y=capital_flow, marker_color='#2E7D32'))
+    fig_cashflow.add_trace(go.Bar(name='Operating', x=years, y=om_flow, marker_color='#F57C00'))
+    fig_cashflow.add_trace(go.Bar(name='Replacement', x=years, y=replacement_flow, marker_color='#1976D2'))
+    fig_cashflow.add_trace(go.Bar(name='Salvage', x=years, y=salvage_flow, marker_color='#C62828'))
+    
+    fig_cashflow.update_layout(
+        title='Nominal Cash Flow',
+        xaxis_title='Year',
+        yaxis_title='Cash Flow ($M)',
+        barmode='relative',
+        height=450,
         showlegend=True
     )
+    charts['cash_flow'] = fig_cashflow
     
-    # Chart 3: Monthly Energy Profile (Simulated)
+    # ============================================================
+    # Chart 3: Monthly Electric Production (Stacked Bar)
+    # ============================================================
     months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     
-    # Create simulated monthly data based on annual fractions
-    pv_monthly = [pv_fraction * (1 + 0.3 * np.sin(i * np.pi / 6)) for i in range(12)]
-    wind_monthly = [wind_fraction * (1 + 0.2 * np.cos(i * np.pi / 6)) for i in range(12)]
-    hydro_monthly = [hydro_fraction * 1.0 for i in range(12)]
+    # Simulate monthly production from annual fractions
+    pv_annual = optimal_row.get('PV_Energy_kWh', 0) / 1000  # MWh
+    wind_annual = optimal_row.get('Wind_Energy_kWh', 0) / 1000
+    hydro_annual = optimal_row.get('Hydro_Energy_kWh', 0) / 1000
+    
+    # Create seasonal variation
+    pv_monthly = [pv_annual/12 * (1 + 0.3 * np.sin((i - 3) * np.pi / 6)) for i in range(12)]
+    wind_monthly = [wind_annual/12 * (1 + 0.2 * np.cos(i * np.pi / 6)) for i in range(12)]
+    hydro_monthly = [hydro_annual/12 for i in range(12)]
     
     fig_monthly = go.Figure()
-    fig_monthly.add_trace(go.Scatter(
-        x=months, y=pv_monthly, name='PV',
-        mode='lines+markers', line=dict(color='#FDB462', width=3),
-        stackgroup='one'
-    ))
-    fig_monthly.add_trace(go.Scatter(
-        x=months, y=wind_monthly, name='Wind',
-        mode='lines+markers', line=dict(color='#80B1D3', width=3),
-        stackgroup='one'
-    ))
-    fig_monthly.add_trace(go.Scatter(
-        x=months, y=hydro_monthly, name='Hydro',
-        mode='lines+markers', line=dict(color='#8DD3C7', width=3),
-        stackgroup='one'
-    ))
+    fig_monthly.add_trace(go.Bar(name='PV', x=months, y=pv_monthly, marker_color='#FDB462'))
+    fig_monthly.add_trace(go.Bar(name='Wind', x=months, y=wind_monthly, marker_color='#80B1D3'))
+    fig_monthly.add_trace(go.Bar(name='Hydro', x=months, y=hydro_monthly, marker_color='#8DD3C7'))
     
     fig_monthly.update_layout(
-        title='Monthly Energy Production Profile',
+        title='Monthly Electric Production',
         xaxis_title='Month',
-        yaxis_title='Energy Contribution (%)',
-        height=400,
-        hovermode='x unified'
+        yaxis_title='Production (MWh)',
+        barmode='stack',
+        height=450,
+        showlegend=True
     )
+    charts['monthly_production'] = fig_monthly
     
-    # Chart 4: Component Capacity vs NPC
-    components = ['PV', 'Wind', 'Hydro', 'BESS']
-    capacities = [
-        results['pv_capacity'],
-        results['wind_capacity'],
-        results['hydro_capacity'],
-        results['bess_power']
+    # ============================================================
+    # Chart 4: Renewable Penetration Pie Chart
+    # ============================================================
+    pv_frac = optimal_row.get('PV_Fraction_%', 0)
+    wind_frac = optimal_row.get('Wind_Fraction_%', 0)
+    hydro_frac = optimal_row.get('Hydro_Fraction_%', 0)
+    
+    fig_pie = go.Figure(data=[go.Pie(
+        labels=['PV', 'Wind', 'Hydro'],
+        values=[pv_frac, wind_frac, hydro_frac],
+        marker=dict(colors=['#FDB462', '#80B1D3', '#8DD3C7']),
+        textinfo='label+percent',
+        hovertemplate='<b>%{label}</b><br>%{value:.1f}%<br>%{percent}<extra></extra>'
+    )])
+    
+    fig_pie.update_layout(
+        title='Energy Production Mix',
+        height=450,
+        showlegend=True
+    )
+    charts['energy_mix'] = fig_pie
+    
+    # ============================================================
+    # Chart 5: Component NPC Comparison
+    # ============================================================
+    npc_values = [
+        optimal_row.get('PV_NPC_$', 0)/1e6,
+        optimal_row.get('Wind_NPC_$', 0)/1e6,
+        optimal_row.get('Hydro_NPC_$', 0)/1e6,
+        optimal_row.get('BESS_NPC_$', 0)/1e6
     ]
-    npcs = [
-        results['pv_npc'] / 1e6,
-        results['wind_npc'] / 1e6,
-        results['hydro_npc'] / 1e6,
-        results['bess_npc'] / 1e6
-    ]
     
-    fig_scatter = go.Figure()
-    fig_scatter.add_trace(go.Scatter(
-        x=capacities,
-        y=npcs,
-        mode='markers+text',
-        marker=dict(
-            size=[c*10 for c in capacities],
-            color=['#FDB462', '#80B1D3', '#8DD3C7', '#FB8072'],
-            opacity=0.7,
-            line=dict(width=2, color='white')
-        ),
-        text=components,
-        textposition='top center',
-        textfont=dict(size=14, color='black')
-    ))
+    fig_npc = go.Figure(data=[
+        go.Bar(x=components, y=npc_values, marker_color=['#FDB462', '#80B1D3', '#8DD3C7', '#FB8072'],
+               text=[f'${v:.2f}M' for v in npc_values], textposition='outside')
+    ])
     
-    fig_scatter.update_layout(
-        title='Capacity vs NPC by Component',
-        xaxis_title='Installed Capacity (MW)',
+    fig_npc.update_layout(
+        title='Net Present Cost by Component',
+        xaxis_title='Component',
         yaxis_title='NPC ($M)',
-        height=400,
+        height=450,
         showlegend=False
     )
+    charts['npc_comparison'] = fig_npc
     
-    return fig_waterfall, fig_energy, fig_monthly, fig_scatter
+    # ============================================================
+    # Chart 6: System Performance Metrics (Gauge Charts)
+    # ============================================================
+    re_penetration = optimal_row.get('RE_Penetration_%', 100)
+    unmet_pct = results.get('unmet_pct', 0)
+    target_unmet = results.get('config_params', {}).get('target_unmet_percent', 0.1)
+    
+    fig_gauges = make_subplots(
+        rows=1, cols=2,
+        specs=[[{'type': 'indicator'}, {'type': 'indicator'}]],
+        subplot_titles=('Renewable Penetration', 'Unmet Load')
+    )
+    
+    fig_gauges.add_trace(go.Indicator(
+        mode="gauge+number+delta",
+        value=re_penetration,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "RE Penetration (%)"},
+        delta={'reference': 100},
+        gauge={
+            'axis': {'range': [None, 100]},
+            'bar': {'color': "#2E7D32"},
+            'steps': [
+                {'range': [0, 50], 'color': "#FFE0B2"},
+                {'range': [50, 80], 'color': "#FFCC80"},
+                {'range': [80, 100], 'color': "#FFA726"}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 95
+            }
+        }
+    ), row=1, col=1)
+    
+    fig_gauges.add_trace(go.Indicator(
+        mode="gauge+number+delta",
+        value=unmet_pct,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "Unmet Load (%)"},
+        delta={'reference': target_unmet},
+        gauge={
+            'axis': {'range': [0, 5]},
+            'bar': {'color': "#1976D2"},
+            'steps': [
+                {'range': [0, target_unmet], 'color': "#C8E6C9"},
+                {'range': [target_unmet, 1.0], 'color': "#FFF9C4"},
+                {'range': [1.0, 5], 'color': "#FFCDD2"}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': target_unmet
+            }
+        }
+    ), row=1, col=2)
+    
+    fig_gauges.update_layout(height=350)
+    charts['performance_gauges'] = fig_gauges
+    
+    return charts
 
 
 # ==============================================================================
@@ -369,7 +444,7 @@ st.set_page_config(
 )
 
 st.markdown('<p style="font-size:2.5rem;font-weight:bold;color:#1f77b4;text-align:center">🌞 Renewable Energy Optimization Tool</p>', unsafe_allow_html=True)
-st.markdown("**Hybrid System Designer: PV + Wind + Hydro + Battery Storage | HOMER-Style NPC Calculation**")
+st.markdown("**Hybrid System Designer: PV + Wind + Hydro + Battery Storage**")
 st.markdown("---")
 
 # Initialize session state
@@ -469,8 +544,7 @@ with st.sidebar:
             bess_power_capex = st.number_input("Power CapEx ($/kW)", value=300, step=10, key="bess_power_capex")
             bess_energy_capex = st.number_input("Energy CapEx ($/kWh)", value=200, step=10, key="bess_energy_capex")
         with col2:
-            bess_opex = st.number_input("OpEx ($/kWh/yr)", value=2, step=1, key="bess_opex")
-            bess_replacement_cost = st.number_input("Replacement (%)", value=80, min_value=0, max_value=100, key="bess_replacement")
+            bess_opex = st.number_input("OpEx ($/kW/yr)", value=2, step=1, key="bess_opex")
     
     # Financial Parameters
     with st.expander("💰 FINANCIAL PARAMETERS"):
@@ -504,14 +578,14 @@ with tab1:
     st.header("Welcome to the Renewable Energy Optimization Tool")
     st.markdown("""
     ### 🎯 Purpose
-    Optimize hybrid renewable energy systems using HOMER Pro methodology to minimize Net Present Cost.
+    Optimize hybrid renewable energy systems to minimize Net Present Cost while meeting reliability targets.
     
     ### 🔧 Features
-    - **HOMER-Style NPC Calculation** with real discount rate and inflation adjustment
+    - **Present Value Cost Analysis** with real discount rate and inflation adjustment
     - **Grid Search Algorithm** testing all capacity combinations
     - **Hydro Operating Window Optimization** for Run-of-River systems  
     - **Professional Excel Reports** matching industry standards
-    - **Interactive HOMER-Style Charts** for results visualization
+    - **Interactive Visualization** for comprehensive results analysis
     """)
     
     col1, col2, col3, col4 = st.columns(4)
@@ -759,19 +833,31 @@ with tab3:
         
         st.markdown("---")
         
-        # HOMER-Style Visualization Charts
-        st.subheader("📈 HOMER-Style Analysis Charts")
+        # Professional Visualization Charts
+        st.subheader("📈 System Analysis")
         
-        fig_waterfall, fig_energy, fig_monthly, fig_scatter = create_homer_style_charts(results)
+        charts = create_professional_charts(results)
         
+        # Row 1: Cost Analysis
         col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(fig_waterfall, use_container_width=True)
-            st.plotly_chart(fig_monthly, use_container_width=True)
-        
+            st.plotly_chart(charts['cost_breakdown'], use_container_width=True)
         with col2:
-            st.plotly_chart(fig_energy, use_container_width=True)
-            st.plotly_chart(fig_scatter, use_container_width=True)
+            st.plotly_chart(charts['cash_flow'], use_container_width=True)
+        
+        # Row 2: Energy Production
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(charts['monthly_production'], use_container_width=True)
+        with col2:
+            st.plotly_chart(charts['energy_mix'], use_container_width=True)
+        
+        # Row 3: Performance Metrics
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(charts['npc_comparison'], use_container_width=True)
+        with col2:
+            st.plotly_chart(charts['performance_gauges'], use_container_width=True)
         
         st.markdown("---")
         
@@ -785,7 +871,7 @@ with tab3:
             'target_unmet_percent': 0.1
         })
         
-        excel_output = export_results_anaconda_format(
+        excel_output = export_results_industry_format(
             results, 
             results['results_df'], 
             results['optimal_row'], 
@@ -805,4 +891,4 @@ with tab3:
 
 # Footer
 st.markdown("---")
-st.markdown('<div style="text-align:center;color:#666"><p>Renewable Energy Optimization Tool v2.0 | HOMER Pro NPC Methodology</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center;color:#666"><p>Renewable Energy Optimization Tool v3.0 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
