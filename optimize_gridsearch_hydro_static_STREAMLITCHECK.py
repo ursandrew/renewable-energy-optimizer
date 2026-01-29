@@ -1091,7 +1091,7 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
     
     return metrics
 # ==============================================================================
-# STEP 6: FIND OPTIMAL SOLUTION
+# STEP 7: FIND OPTIMAL SOLUTION
 # ==============================================================================
 
 def find_optimal_solution(results_df):
@@ -1132,7 +1132,7 @@ def find_optimal_solution(results_df):
 
 
 # ==============================================================================
-# STEP 7: SAVE RESULTS
+# STEP 8: SAVE RESULTS
 # ==============================================================================
 
 def write_results(results_df, optimal, config, grid_config, solar, wind, hydro, bess,
@@ -1435,48 +1435,55 @@ def main():
     optimal = find_optimal_solution(results_df)
     
     if optimal is not None:
-        # Save results
+        # Calculate electrical metrics for optimal solution BEFORE saving
+        optimal_dispatch = calculate_dispatch_with_hydro(
+            load_profile, pvsyst_profile, wind_profile,
+            optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
+            optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
+            solar, wind, hydro, bess,
+            int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
+        )
+        
+        component_capacities = {
+            'pv_kw': optimal['PV_kW'],
+            'wind_kw': optimal['Wind_kW'],
+            'hydro_kw': optimal['Hydro_kW'],
+            'bess_kwh': optimal['BESS_Capacity_kWh']
+        }
+        
+        component_configs = {
+            'pv_lcoe': solar['lcoe'],
+            'wind_lcoe': wind['lcoe'],
+            'hydro_lcoe': hydro['lcoe'],
+            'bess_max_soc': bess['max_soc'],
+            'bess_min_soc': bess['min_soc'],
+            'bess_lifetime': bess['lifetime']
+        }
+        
+        electrical_metrics = calculate_electrical_metrics(optimal_dispatch, component_capacities, component_configs)
+        
+        # NOW save results (includes electrical metrics in Sheet 6)
         write_results(results_df, optimal, config, grid_config, solar, wind, hydro, bess,
                      load_profile, pvsyst_profile, wind_profile)
-    # Calculate electrical metrics for optimal solution
-    optimal_dispatch = calculate_dispatch_with_hydro(
-        load_profile, pvsyst_profile, wind_profile,
-        optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
-        optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
-        solar, wind, hydro, bess,
-        int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
-    )
-    
-    component_capacities = {
-        'pv_kw': optimal['PV_kW'],
-        'wind_kw': optimal['Wind_kW'],
-        'hydro_kw': optimal['Hydro_kW'],
-        'bess_kwh': optimal['BESS_Capacity_kWh']
-    }
-    
-    component_configs = {
-        'pv_lcoe': solar['lcoe'],
-        'wind_lcoe': wind['lcoe'],
-        'hydro_lcoe': hydro['lcoe'],
-        'bess_max_soc': bess['max_soc'],
-        'bess_min_soc': bess['min_soc'],
-        'bess_lifetime': bess['lifetime']
-    }
-    
-    electrical_metrics = calculate_electrical_metrics(optimal_dispatch, component_capacities, component_configs)
-    
-    # Store in a global or return value for Streamlit to access
-    return {
-        'optimal': optimal,
-        'results_df': results_df,
-        'electrical_metrics': electrical_metrics,
-        'optimal_dispatch': optimal_dispatch
-    }
-    print(f"\n{'='*70}")
-    print(f"End: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*70}\n")
+        
+        # Print completion
+        print(f"\n{'='*70}")
+        print(f"End: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*70}\n")
+        
+        # Return for Streamlit to use
+        return {
+            'optimal': optimal,
+            'results_df': results_df,
+            'electrical_metrics': electrical_metrics,
+            'optimal_dispatch': optimal_dispatch
+        }
+    else:
+        print(f"\n{'='*70}")
+        print(f"End: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*70}\n")
+        return None
 
 
 if __name__ == "__main__":
     main()
-
