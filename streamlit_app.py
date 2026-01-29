@@ -657,3 +657,4 @@ st.markdown("""
     <p>HOMER-style NPC Calculation</p>
 </div>
 """, unsafe_allow_html=True)
+
