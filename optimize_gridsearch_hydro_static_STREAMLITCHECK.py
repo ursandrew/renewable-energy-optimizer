@@ -978,7 +978,118 @@ def grid_search_optimize_hydro(config, grid_config, solar, wind, hydro, bess,
     
     return pd.DataFrame(results)
 
+# ==============================================================================
+# STEP 6: CALCULATE ELECTRICAL METRICS
+# ==============================================================================
 
+def calculate_electrical_metrics(dispatch_df, component_capacities, component_configs):
+    """
+    Calculate electrical performance metrics for all components from dispatch results.
+    
+    Args:
+        dispatch_df: DataFrame with hourly dispatch results
+        component_capacities: dict with 'pv_kw', 'wind_kw', 'hydro_kw', 'bess_kwh'
+        component_configs: dict with LCOE values and BESS parameters
+    
+    Returns:
+        Dictionary with metrics for PV, Wind, Hydro, and BESS
+    """
+    
+    metrics = {}
+    
+    # PV Metrics
+    if component_capacities['pv_kw'] > 0:
+        pv_output = dispatch_df['PV_Output_kW'].values
+        pv_total_production = pv_output.sum()
+        pv_hours_operation = (pv_output > 0).sum()
+        pv_mean_output = pv_output[pv_output > 0].mean() if pv_hours_operation > 0 else 0
+        pv_capacity_factor = (pv_total_production / (component_capacities['pv_kw'] * 8760)) * 100
+        pv_lcoe = component_configs['pv_lcoe']
+        
+        metrics['pv'] = {
+            'rated_capacity_kw': component_capacities['pv_kw'],
+            'mean_output_kw': pv_mean_output,
+            'capacity_factor_pct': pv_capacity_factor,
+            'total_production_kwh': pv_total_production,
+            'hours_of_operation': pv_hours_operation,
+            'levelized_cost_per_kwh': pv_lcoe / 1000
+        }
+    else:
+        metrics['pv'] = {'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
+                        'total_production_kwh': 0, 'hours_of_operation': 0, 'levelized_cost_per_kwh': 0}
+    
+    # Wind Metrics
+    if component_capacities['wind_kw'] > 0:
+        wind_output = dispatch_df['Wind_Output_kW'].values
+        wind_total_production = wind_output.sum()
+        wind_hours_operation = (wind_output > 0).sum()
+        wind_mean_output = wind_output[wind_output > 0].mean() if wind_hours_operation > 0 else 0
+        wind_capacity_factor = (wind_total_production / (component_capacities['wind_kw'] * 8760)) * 100
+        wind_lcoe = component_configs['wind_lcoe']
+        
+        metrics['wind'] = {
+            'rated_capacity_kw': component_capacities['wind_kw'],
+            'mean_output_kw': wind_mean_output,
+            'capacity_factor_pct': wind_capacity_factor,
+            'total_production_kwh': wind_total_production,
+            'hours_of_operation': wind_hours_operation,
+            'levelized_cost_per_kwh': wind_lcoe / 1000
+        }
+    else:
+        metrics['wind'] = {'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
+                          'total_production_kwh': 0, 'hours_of_operation': 0, 'levelized_cost_per_kwh': 0}
+    
+    # Hydro Metrics
+    if component_capacities['hydro_kw'] > 0:
+        hydro_output = dispatch_df['Hydro_Output_kW'].values
+        hydro_total_production = hydro_output.sum()
+        hydro_hours_operation = (hydro_output > 0).sum()
+        hydro_mean_output = hydro_output[hydro_output > 0].mean() if hydro_hours_operation > 0 else 0
+        hydro_capacity_factor = (hydro_total_production / (component_capacities['hydro_kw'] * 8760)) * 100
+        hydro_lcoe = component_configs['hydro_lcoe']
+        
+        metrics['hydro'] = {
+            'rated_capacity_kw': component_capacities['hydro_kw'],
+            'mean_output_kw': hydro_mean_output,
+            'capacity_factor_pct': hydro_capacity_factor,
+            'total_production_kwh': hydro_total_production,
+            'hours_of_operation': hydro_hours_operation,
+            'levelized_cost_per_kwh': hydro_lcoe / 1000
+        }
+    else:
+        metrics['hydro'] = {'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
+                           'total_production_kwh': 0, 'hours_of_operation': 0, 'levelized_cost_per_kwh': 0}
+    
+    # BESS Metrics
+    if component_capacities['bess_kwh'] > 0:
+        bess_charge = dispatch_df['BESS_Charge_kW'].values
+        bess_discharge = dispatch_df['BESS_Discharge_kW'].values
+        
+        energy_in = bess_charge.sum()
+        energy_out = bess_discharge.sum()
+        losses = energy_in - energy_out
+        annual_throughput = energy_out
+        
+        mean_load = dispatch_df['Load_kW'].mean()
+        usable_capacity = component_capacities['bess_kwh'] * (component_configs['bess_max_soc'] - component_configs['bess_min_soc'])
+        autonomy_hours = usable_capacity / mean_load if mean_load > 0 else 0
+        
+        metrics['bess'] = {
+            'nominal_capacity_kwh': component_capacities['bess_kwh'],
+            'usable_capacity_kwh': usable_capacity,
+            'autonomy_hours': autonomy_hours,
+            'energy_in_kwh': energy_in,
+            'energy_out_kwh': energy_out,
+            'losses_kwh': losses,
+            'annual_throughput_kwh': annual_throughput,
+            'expected_life_years': component_configs['bess_lifetime']
+        }
+    else:
+        metrics['bess'] = {'nominal_capacity_kwh': 0, 'usable_capacity_kwh': 0, 'autonomy_hours': 0,
+                          'energy_in_kwh': 0, 'energy_out_kwh': 0, 'losses_kwh': 0,
+                          'annual_throughput_kwh': 0, 'expected_life_years': 0}
+    
+    return metrics
 # ==============================================================================
 # STEP 6: FIND OPTIMAL SOLUTION
 # ==============================================================================
@@ -1219,8 +1330,68 @@ def write_results(results_df, optimal, config, grid_config, solar, wind, hydro, 
             int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
         )
         optimal_dispatch.to_excel(writer, sheet_name='Hourly_Dispatch', index=False)
+        # Sheet 6: Electrical Metrics
+        electrical_metrics_data = []
         
-        # Sheet 6: Hydro Window Analysis (for optimal solution)
+        # Calculate metrics from optimal dispatch
+        component_capacities = {
+            'pv_kw': optimal['PV_kW'],
+            'wind_kw': optimal['Wind_kW'],
+            'hydro_kw': optimal['Hydro_kW'],
+            'bess_kwh': optimal['BESS_Capacity_kWh']
+        }
+        
+        component_configs = {
+            'pv_lcoe': solar['lcoe'],
+            'wind_lcoe': wind['lcoe'],
+            'hydro_lcoe': hydro['lcoe'],
+            'bess_max_soc': bess['max_soc'],
+            'bess_min_soc': bess['min_soc'],
+            'bess_lifetime': bess['lifetime']
+        }
+        
+        elec_metrics = calculate_electrical_metrics(optimal_dispatch, component_capacities, component_configs)
+        
+        electrical_metrics_data.extend([
+            ['ELECTRICAL PERFORMANCE METRICS', ''],
+            ['', ''],
+            ['=== SOLAR PV ===', ''],
+            ['Rated Capacity (kW)', elec_metrics['pv']['rated_capacity_kw']],
+            ['Mean Output (kW)', f"{elec_metrics['pv']['mean_output_kw']:.2f}"],
+            ['Capacity Factor (%)', f"{elec_metrics['pv']['capacity_factor_pct']:.2f}"],
+            ['Total Production (kWh/yr)', f"{elec_metrics['pv']['total_production_kwh']:,.0f}"],
+            ['Hours of Operation (hrs/yr)', f"{elec_metrics['pv']['hours_of_operation']:,.0f}"],
+            ['Levelized Cost ($/kWh)', f"${elec_metrics['pv']['levelized_cost_per_kwh']:.4f}"],
+            ['', ''],
+            ['=== WIND ===', ''],
+            ['Rated Capacity (kW)', elec_metrics['wind']['rated_capacity_kw']],
+            ['Mean Output (kW)', f"{elec_metrics['wind']['mean_output_kw']:.2f}"],
+            ['Capacity Factor (%)', f"{elec_metrics['wind']['capacity_factor_pct']:.2f}"],
+            ['Total Production (kWh/yr)', f"{elec_metrics['wind']['total_production_kwh']:,.0f}"],
+            ['Hours of Operation (hrs/yr)', f"{elec_metrics['wind']['hours_of_operation']:,.0f}"],
+            ['Levelized Cost ($/kWh)', f"${elec_metrics['wind']['levelized_cost_per_kwh']:.4f}"],
+            ['', ''],
+            ['=== HYDRO ===', ''],
+            ['Rated Capacity (kW)', elec_metrics['hydro']['rated_capacity_kw']],
+            ['Mean Output (kW)', f"{elec_metrics['hydro']['mean_output_kw']:.2f}"],
+            ['Capacity Factor (%)', f"{elec_metrics['hydro']['capacity_factor_pct']:.2f}"],
+            ['Total Production (kWh/yr)', f"{elec_metrics['hydro']['total_production_kwh']:,.0f}"],
+            ['Hours of Operation (hrs/yr)', f"{elec_metrics['hydro']['hours_of_operation']:,.0f}"],
+            ['Levelized Cost ($/kWh)', f"${elec_metrics['hydro']['levelized_cost_per_kwh']:.4f}"],
+            ['', ''],
+            ['=== BATTERY STORAGE ===', ''],
+            ['Nominal Capacity (kWh)', f"{elec_metrics['bess']['nominal_capacity_kwh']:.2f}"],
+            ['Usable Capacity (kWh)', f"{elec_metrics['bess']['usable_capacity_kwh']:.2f}"],
+            ['Autonomy (hours)', f"{elec_metrics['bess']['autonomy_hours']:.2f}"],
+            ['Energy In (kWh/yr)', f"{elec_metrics['bess']['energy_in_kwh']:,.0f}"],
+            ['Energy Out (kWh/yr)', f"{elec_metrics['bess']['energy_out_kwh']:,.0f}"],
+            ['Losses (kWh/yr)', f"{elec_metrics['bess']['losses_kwh']:,.0f}"],
+            ['Annual Throughput (kWh/yr)', f"{elec_metrics['bess']['annual_throughput_kwh']:,.0f}"],
+            ['Expected Life (years)', elec_metrics['bess']['expected_life_years']],
+        ])
+        
+        pd.DataFrame(electrical_metrics_data).to_excel(writer, sheet_name='Electrical_Metrics', index=False, header=False)
+        # Sheet 7: Hydro Window Analysis (for optimal solution)
         _, _, _, windows_df = find_optimal_hydro_window(
             load_profile, pvsyst_profile, wind_profile,
             optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
@@ -1267,7 +1438,40 @@ def main():
         # Save results
         write_results(results_df, optimal, config, grid_config, solar, wind, hydro, bess,
                      load_profile, pvsyst_profile, wind_profile)
+    # Calculate electrical metrics for optimal solution
+    optimal_dispatch = calculate_dispatch_with_hydro(
+        load_profile, pvsyst_profile, wind_profile,
+        optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
+        optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
+        solar, wind, hydro, bess,
+        int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
+    )
     
+    component_capacities = {
+        'pv_kw': optimal['PV_kW'],
+        'wind_kw': optimal['Wind_kW'],
+        'hydro_kw': optimal['Hydro_kW'],
+        'bess_kwh': optimal['BESS_Capacity_kWh']
+    }
+    
+    component_configs = {
+        'pv_lcoe': solar['lcoe'],
+        'wind_lcoe': wind['lcoe'],
+        'hydro_lcoe': hydro['lcoe'],
+        'bess_max_soc': bess['max_soc'],
+        'bess_min_soc': bess['min_soc'],
+        'bess_lifetime': bess['lifetime']
+    }
+    
+    electrical_metrics = calculate_electrical_metrics(optimal_dispatch, component_capacities, component_configs)
+    
+    # Store in a global or return value for Streamlit to access
+    return {
+        'optimal': optimal,
+        'results_df': results_df,
+        'electrical_metrics': electrical_metrics,
+        'optimal_dispatch': optimal_dispatch
+    }
     print(f"\n{'='*70}")
     print(f"End: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*70}\n")
@@ -1275,3 +1479,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
