@@ -474,7 +474,14 @@ with tab2:
                 
                 progress_bar.progress(100)
                 status_text.text("✅ Complete!")
-                
+                # After optimal = opt_module.find_optimal_solution(results_df)
+                st.write("**🔍 DIAGNOSTIC - First Row from Results:**")
+                first_row = results_df.iloc[0]
+                st.write(f"PV_OM_$ from results_df: ${first_row.get('PV_OM_$', 0):,.0f}")
+                st.write(f"Expected: ~$775,651 (Present Value)")
+                if first_row.get('PV_OM_$', 0) < 100000:
+                    st.error("❌ WRONG! Getting annual cost instead of Present Value!")
+                    st.write("This means the optimization code is using wrong calculations.")
                 # Clean up
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
@@ -657,4 +664,5 @@ st.markdown("""
     <p>HOMER-style NPC Calculation</p>
 </div>
 """, unsafe_allow_html=True)
+
 
