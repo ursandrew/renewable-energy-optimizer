@@ -249,67 +249,6 @@ def create_cost_analysis_charts_with_tables(results, optimal_row):
     
     charts_and_tables['npc_by_component'] = {'chart': fig1, 'table': table1}
     
-    # Chart 2: Net Present Cost by Cost Type
-    cost_types = ['Capital', 'Replacement', 'O&M', 'Salvage']
-    cost_values = [
-        optimal_row.get('Capital_$', 0) / 1e6,
-        optimal_row.get('Replacement_$', 0) / 1e6,
-        optimal_row.get('OM_$', 0) / 1e6,
-        -optimal_row.get('Salvage_$', 0) / 1e6
-    ]
-    
-    fig2 = go.Figure(data=[
-        go.Bar(
-            x=cost_types,
-            y=cost_values,
-            marker_color=['#2E7D32', '#1976D2', '#F57C00', '#C62828'],
-            text=[f'${v:.2f}M' for v in cost_values],
-            textposition='outside'
-        )
-    ])
-    fig2.update_layout(
-        title='Net Present Cost by Cost Type',
-        xaxis_title='Cost Type',
-        yaxis_title='Cost ($M)',
-        height=400,
-        showlegend=False
-    )
-    
-    table2 = pd.DataFrame({
-        'Cost Type': cost_types,
-        'PV ($)': [
-            f"${optimal_row.get('PV_Capital_$', 0):,.0f}",
-            f"${optimal_row.get('PV_Replacement_$', 0):,.0f}",
-            f"${optimal_row.get('PV_OM_$', 0):,.0f}",
-            f"${optimal_row.get('PV_Salvage_$', 0):,.0f}"
-        ],
-        'Wind ($)': [
-            f"${optimal_row.get('Wind_Capital_$', 0):,.0f}",
-            f"${optimal_row.get('Wind_Replacement_$', 0):,.0f}",
-            f"${optimal_row.get('Wind_OM_$', 0):,.0f}",
-            f"${optimal_row.get('Wind_Salvage_$', 0):,.0f}"
-        ],
-        'Hydro ($)': [
-            f"${optimal_row.get('Hydro_Capital_$', 0):,.0f}",
-            f"${optimal_row.get('Hydro_Replacement_$', 0):,.0f}",
-            f"${optimal_row.get('Hydro_OM_$', 0):,.0f}",
-            f"${optimal_row.get('Hydro_Salvage_$', 0):,.0f}"
-        ],
-        'BESS ($)': [
-            f"${optimal_row.get('BESS_Capital_$', 0):,.0f}",
-            f"${optimal_row.get('BESS_Replacement_$', 0):,.0f}",
-            f"${optimal_row.get('BESS_OM_$', 0):,.0f}",
-            f"${optimal_row.get('BESS_Salvage_$', 0):,.0f}"
-        ],
-        'System Total ($)': [
-            f"${optimal_row.get('Capital_$', 0):,.0f}",
-            f"${optimal_row.get('Replacement_$', 0):,.0f}",
-            f"${optimal_row.get('OM_$', 0):,.0f}",
-            f"${optimal_row.get('Salvage_$', 0):,.0f}"
-        ]
-    })
-    
-    charts_and_tables['npc_by_cost_type'] = {'chart': fig2, 'table': table2}
     
     # Chart 3: Annualized Cost by Component
     annualized_values = [
@@ -353,49 +292,6 @@ def create_cost_analysis_charts_with_tables(results, optimal_row):
     })
     
     charts_and_tables['annualized_by_component'] = {'chart': fig3, 'table': table3}
-    
-    # Chart 4: Annualized Cost by Cost Type
-    crf = optimal_row.get('CRF', 0.1)
-    
-    ann_capital = optimal_row.get('Capital_$', 0) * crf / 1e3
-    ann_replacement = optimal_row.get('Replacement_$', 0) * crf / 1e3
-    ann_om = optimal_row.get('OM_$', 0) / optimal_row.get('Real_Discount_Rate_%', 8) / 1e3
-    ann_salvage = -optimal_row.get('Salvage_$', 0) * crf / 1e3
-    
-    fig4 = go.Figure(data=[
-        go.Bar(
-            x=cost_types,
-            y=[ann_capital, ann_replacement, ann_om, ann_salvage],
-            marker_color=['#2E7D32', '#1976D2', '#F57C00', '#C62828'],
-            text=[f'${v:.1f}K' for v in [ann_capital, ann_replacement, ann_om, ann_salvage]],
-            textposition='outside'
-        )
-    ])
-    fig4.update_layout(
-        title='Annualized Cost by Cost Type',
-        xaxis_title='Cost Type',
-        yaxis_title='Annualized Cost ($K/year)',
-        height=400,
-        showlegend=False
-    )
-    
-    table4 = pd.DataFrame({
-        'Cost Type': cost_types,
-        'Annualized ($/year)': [
-            f"${ann_capital*1000:,.0f}",
-            f"${ann_replacement*1000:,.0f}",
-            f"${ann_om*1000:,.0f}",
-            f"${ann_salvage*1000:,.0f}"
-        ],
-        'Total Annualized ($/year)': [
-            f"${optimal_row.get('Annualized_$/yr', 0):,.0f}",
-            "-",
-            "-",
-            "-"
-        ]
-    })
-    
-    charts_and_tables['annualized_by_cost_type'] = {'chart': fig4, 'table': table4}
     
     return charts_and_tables
 
@@ -501,18 +397,310 @@ def create_fixed_cash_flow_chart(results, optimal_row):
     
     return fig, cash_flow_table
 
-
+def create_typical_daily_dispatch_profile(results, optimal_row):
+    """
+    Create a typical 24-hour dispatch profile chart matching manager's requirement.
+    Shows PV, Wind, Hydro, Load, and BESS SOC variation over a representative day.
+    """
+    
+    # Get hourly dispatch data (use average of all days or pick a representative day)
+    if 'optimal_dispatch' in results:
+        dispatch_df = results['optimal_dispatch']
+        
+        # Calculate average hourly profile across all days
+        dispatch_df['Hour_of_Day'] = dispatch_df['Hour'] % 24
+        
+        avg_profile = dispatch_df.groupby('Hour_of_Day').agg({
+            'Load_kW': 'mean',
+            'PV_Output_kW': 'mean',
+            'Wind_Output_kW': 'mean',
+            'Hydro_Output_kW': 'mean',
+            'BESS_SOC_kWh': 'mean',
+            'BESS_Discharge_kW': 'mean',
+            'BESS_Charge_kW': 'mean'
+        }).reset_index()
+        
+        # Convert to MW for cleaner display
+        avg_profile['Load_MW'] = avg_profile['Load_kW'] / 1000
+        avg_profile['PV_MW'] = avg_profile['PV_Output_kW'] / 1000
+        avg_profile['Wind_MW'] = avg_profile['Wind_Output_kW'] / 1000
+        avg_profile['Hydro_MW'] = avg_profile['Hydro_Output_kW'] / 1000
+        avg_profile['BESS_Net_MW'] = (avg_profile['BESS_Discharge_kW'] - avg_profile['BESS_Charge_kW']) / 1000
+        
+        # Calculate BESS SOC percentage
+        bess_capacity_kwh = results.get('bess_energy', 1) * 1000  # Convert MWh to kWh
+        avg_profile['BESS_SOC_%'] = (avg_profile['BESS_SOC_kWh'] / bess_capacity_kwh) * 100
+        
+    else:
+        # Fallback: Create sample profile if dispatch data not available
+        hours = list(range(24))
+        avg_profile = pd.DataFrame({
+            'Hour_of_Day': hours,
+            'Load_MW': [5] * 24,
+            'PV_MW': [0] * 24,
+            'Wind_MW': [0] * 24,
+            'Hydro_MW': [0] * 24,
+            'BESS_Net_MW': [0] * 24,
+            'BESS_SOC_%': [50] * 24
+        })
+    
+    # Create figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Add stacked area for generation sources
+    fig.add_trace(
+        go.Scatter(
+            x=avg_profile['Hour_of_Day'],
+            y=avg_profile['Hydro_MW'],
+            name='Hydro',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            fillcolor='rgba(141, 211, 199, 0.7)',  # Teal
+            hovertemplate='Hour %{x}<br>Hydro: %{y:.2f} MW<extra></extra>'
+        ),
+        secondary_y=False
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=avg_profile['Hour_of_Day'],
+            y=avg_profile['PV_MW'],
+            name='PV',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            fillcolor='rgba(253, 180, 98, 0.7)',  # Orange
+            hovertemplate='Hour %{x}<br>PV: %{y:.2f} MW<extra></extra>'
+        ),
+        secondary_y=False
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=avg_profile['Hour_of_Day'],
+            y=avg_profile['Wind_MW'],
+            name='Wind',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            fillcolor='rgba(128, 177, 211, 0.7)',  # Blue
+            hovertemplate='Hour %{x}<br>Wind: %{y:.2f} MW<extra></extra>'
+        ),
+        secondary_y=False
+    )
+    
+    # Add BESS net power (can be positive or negative)
+    fig.add_trace(
+        go.Scatter(
+            x=avg_profile['Hour_of_Day'],
+            y=avg_profile['BESS_Net_MW'],
+            name='BESS Net',
+            mode='lines',
+            line=dict(width=2, color='rgba(251, 128, 114, 0.8)', dash='dot'),
+            hovertemplate='Hour %{x}<br>BESS: %{y:.2f} MW<extra></extra>'
+        ),
+        secondary_y=False
+    )
+    
+    # Add load as a line (not stacked)
+    fig.add_trace(
+        go.Scatter(
+            x=avg_profile['Hour_of_Day'],
+            y=avg_profile['Load_MW'],
+            name='Load',
+            mode='lines',
+            line=dict(width=3, color='#FFD700'),  # Gold/Yellow
+            hovertemplate='Hour %{x}<br>Load: %{y:.2f} MW<extra></extra>'
+        ),
+        secondary_y=False
+    )
+    
+    # Add BESS SOC on secondary y-axis
+    fig.add_trace(
+        go.Scatter(
+            x=avg_profile['Hour_of_Day'],
+            y=avg_profile['BESS_SOC_%'],
+            name='BESS SOC',
+            mode='lines',
+            line=dict(width=3, color='#FF00FF'),  # Magenta
+            hovertemplate='Hour %{x}<br>SOC: %{y:.1f}%<extra></extra>'
+        ),
+        secondary_y=True
+    )
+    
+    # Update layout
+    fig.update_xaxes(
+        title_text="Hours",
+        tickmode='linear',
+        tick0=0,
+        dtick=2,
+        range=[0, 24]
+    )
+    
+    fig.update_yaxes(
+        title_text="Power (MW)",
+        secondary_y=False
+    )
+    
+    fig.update_yaxes(
+        title_text="BESS SOC (%)",
+        secondary_y=True,
+        range=[0, 120]
+    )
+    
+    fig.update_layout(
+        title='Typical Daily Dispatch Profile',
+        hovermode='x unified',
+        height=500,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return fig
 # ==============================================================================
-# ELECTRICAL METRICS TABLES
+# ELECTRICAL METRICS TABLES WITH SUNGROW BESS DEPLOYMENT
 # ==============================================================================
 
-def create_electrical_metrics_tables(electrical_metrics):
-    """Create formatted tables for electrical metrics of each component."""
+def calculate_bess_deployment_sungrow(bess_power_mw, bess_capacity_mwh):
+    """
+    Calculate BESS deployment using REAL Sungrow PowerTitan 2.0 specifications.
+    Based on actual layout drawing with corrected spacing interpretation.
+    
+    Args:
+        bess_power_mw: Total BESS power (MW)
+        bess_capacity_mwh: Total BESS capacity (MWh)
+    
+    Returns:
+        Dict with deployment metrics
+    """
+    import math
+    
+    # Sungrow PowerTitan 2.0 specifications
+    container_capacity_mwh = 10.0  # Each container: 10 MWh
+    container_power_mw = 5.0       # Each container: 5 MW
+    container_length_m = 6.058     # Container depth (m)
+    container_width_m = 2.438      # Container width (m)
+    container_height_m = 2.896     # Container height (m)
+    
+    # Spacing requirements from Sungrow layout drawing
+    back_to_back_spacing_m = 0.150   # 150 mm - LENGTH direction spacing
+    adjacent_spacing_m = 1.500        # 1,500 mm - WIDTH direction spacing
+    mvs_spacing_m = 3.500            # 3,500 mm - spacing to MVS unit
+    mvs_width_m = 2.000              # MVS5000 unit width (estimated)
+    perimeter_clearance_m = 5.000    # Fire safety perimeter clearance
+    
+    # Calculate number of containers needed
+    num_containers_energy = math.ceil(bess_capacity_mwh / container_capacity_mwh)
+    num_containers_power = math.ceil(bess_power_mw / container_power_mw)
+    num_containers = max(num_containers_energy, num_containers_power)
+    
+    # Calculate actual installed capacity
+    actual_capacity_mwh = num_containers * container_capacity_mwh
+    actual_power_mw = num_containers * container_power_mw
+    
+    # Number of MVS units (1 MVS5000 per 2 containers)
+    num_mvs_units = math.ceil(num_containers / 2)
+    
+    # Calculate layout dimensions
+    if num_containers <= 2:
+        # Single section (2 containers back-to-back + 1 MVS)
+        # LENGTH: Just container length + perimeter clearances
+        total_length_m = container_length_m + (2 * perimeter_clearance_m)
+        
+        # WIDTH: Containers back-to-back + MVS section + clearances
+        container_section_width = (container_width_m +           # Container 1
+                                   back_to_back_spacing_m +      # Gap
+                                   container_width_m)            # Container 2
+        
+        mvs_section_width = mvs_spacing_m + mvs_width_m         # MVS section
+        
+        total_width_m = (container_section_width + 
+                        mvs_section_width + 
+                        2 * perimeter_clearance_m)
+        
+        layout_desc = "1 section (2 containers back-to-back + 1 MVS unit)"
+        
+    else:
+        # Multiple sections arranged side-by-side
+        num_sections = math.ceil(num_containers / 2)
+        
+        # LENGTH: Multiple sections side-by-side with adjacent spacing
+        section_length = container_length_m + adjacent_spacing_m
+        total_length_m = (num_sections * section_length - adjacent_spacing_m +  # Last section has no spacing after
+                         2 * perimeter_clearance_m)
+        
+        # WIDTH: Same as single section
+        container_section_width = (container_width_m + 
+                                   back_to_back_spacing_m + 
+                                   container_width_m)
+        mvs_section_width = mvs_spacing_m + mvs_width_m
+        total_width_m = (container_section_width + 
+                        mvs_section_width + 
+                        2 * perimeter_clearance_m)
+        
+        layout_desc = f"{num_sections} sections side-by-side ({num_containers} containers + {num_mvs_units} MVS units)"
+    
+    # Calculate total area
+    total_area_m2 = total_length_m * total_width_m
+    total_area_hectares = total_area_m2 / 10000
+    total_area_acres = total_area_hectares * 2.471
+    
+    # Calculate container footprint (without clearances)
+    container_footprint_m2 = num_containers * (container_length_m * container_width_m)
+    
+    # Density metrics
+    power_density_mw_per_ha = actual_power_mw / total_area_hectares if total_area_hectares > 0 else 0
+    energy_density_mwh_per_ha = actual_capacity_mwh / total_area_hectares if total_area_hectares > 0 else 0
+    
+    return {
+        'num_containers': num_containers,
+        'container_model': 'PowerTitan 2.0',
+        'container_capacity_mwh': container_capacity_mwh,
+        'container_power_mw': container_power_mw,
+        'container_dimensions': f"{container_length_m:.2f} × {container_width_m:.2f} × {container_height_m:.2f} m",
+        'actual_capacity_mwh': actual_capacity_mwh,
+        'actual_power_mw': actual_power_mw,
+        'num_mvs_units': num_mvs_units,
+        'layout_description': layout_desc,
+        'container_footprint_m2': container_footprint_m2,
+        'total_length_m': total_length_m,
+        'total_width_m': total_width_m,
+        'site_dimensions': f"{total_length_m:.1f} × {total_width_m:.1f} m",
+        'total_area_m2': total_area_m2,
+        'total_area_hectares': total_area_hectares,
+        'total_area_acres': total_area_acres,
+        'power_density_mw_per_ha': power_density_mw_per_ha,
+        'energy_density_mwh_per_ha': energy_density_mwh_per_ha,
+        'spacing_back_to_back_mm': 150,
+        'spacing_adjacent_mm': 1500,
+        'spacing_mvs_mm': 3500
+    }
+
+
+def create_electrical_metrics_tables(electrical_metrics, bess_power_mw=0, bess_capacity_mwh=0):
+    """
+    Create formatted tables for electrical metrics of each component.
+    Now includes Sungrow BESS deployment specifications.
+    
+    Args:
+        electrical_metrics: Dict with electrical metrics from optimization
+        bess_power_mw: BESS power in MW (for deployment calculation)
+        bess_capacity_mwh: BESS capacity in MWh (for deployment calculation)
+    """
     
     tables = {}
     
     if electrical_metrics:
-        # PV Table
+        # ========================================================================
+        # PV TABLE
+        # ========================================================================
         pv_data = pd.DataFrame({
             'Metric': [
                 'Rated Capacity',
@@ -520,7 +708,7 @@ def create_electrical_metrics_tables(electrical_metrics):
                 'Capacity Factor',
                 'Total Production',
                 'Hours of Operation',
-                'Levelized Cost'
+                'Levelized Cost (LCOE)'
             ],
             'Value': [
                 f"{electrical_metrics['pv']['rated_capacity_kw']:,.1f} kW",
@@ -528,12 +716,14 @@ def create_electrical_metrics_tables(electrical_metrics):
                 f"{electrical_metrics['pv']['capacity_factor_pct']:.2f}%",
                 f"{electrical_metrics['pv']['total_production_kwh']:,.0f} kWh/yr",
                 f"{electrical_metrics['pv']['hours_of_operation']:,.0f} hrs/yr",
-                f"${electrical_metrics['pv']['levelized_cost_per_kwh']:.4f}/kWh"
+                f"${electrical_metrics['pv']['levelized_cost_per_kwh']:.4f}/kWh (${electrical_metrics['pv'].get('levelized_cost_per_mwh', 0):.2f}/MWh)"
             ]
         })
         tables['pv'] = pv_data
         
-        # Wind Table
+        # ========================================================================
+        # WIND TABLE
+        # ========================================================================
         wind_data = pd.DataFrame({
             'Metric': [
                 'Rated Capacity',
@@ -541,7 +731,7 @@ def create_electrical_metrics_tables(electrical_metrics):
                 'Capacity Factor',
                 'Total Production',
                 'Hours of Operation',
-                'Levelized Cost'
+                'Levelized Cost (LCOE)'
             ],
             'Value': [
                 f"{electrical_metrics['wind']['rated_capacity_kw']:,.1f} kW",
@@ -549,12 +739,14 @@ def create_electrical_metrics_tables(electrical_metrics):
                 f"{electrical_metrics['wind']['capacity_factor_pct']:.2f}%",
                 f"{electrical_metrics['wind']['total_production_kwh']:,.0f} kWh/yr",
                 f"{electrical_metrics['wind']['hours_of_operation']:,.0f} hrs/yr",
-                f"${electrical_metrics['wind']['levelized_cost_per_kwh']:.4f}/kWh"
+                f"${electrical_metrics['wind']['levelized_cost_per_kwh']:.4f}/kWh (${electrical_metrics['wind'].get('levelized_cost_per_mwh', 0):.2f}/MWh)"
             ]
         })
         tables['wind'] = wind_data
         
-        # Hydro Table
+        # ========================================================================
+        # HYDRO TABLE
+        # ========================================================================
         hydro_data = pd.DataFrame({
             'Metric': [
                 'Rated Capacity',
@@ -562,7 +754,7 @@ def create_electrical_metrics_tables(electrical_metrics):
                 'Capacity Factor',
                 'Total Production',
                 'Hours of Operation',
-                'Levelized Cost'
+                'Levelized Cost (LCOE)'
             ],
             'Value': [
                 f"{electrical_metrics['hydro']['rated_capacity_kw']:,.1f} kW",
@@ -570,13 +762,15 @@ def create_electrical_metrics_tables(electrical_metrics):
                 f"{electrical_metrics['hydro']['capacity_factor_pct']:.2f}%",
                 f"{electrical_metrics['hydro']['total_production_kwh']:,.0f} kWh/yr",
                 f"{electrical_metrics['hydro']['hours_of_operation']:,.0f} hrs/yr",
-                f"${electrical_metrics['hydro']['levelized_cost_per_kwh']:.4f}/kWh"
+                f"${electrical_metrics['hydro']['levelized_cost_per_kwh']:.4f}/kWh (${electrical_metrics['hydro'].get('levelized_cost_per_mwh', 0):.2f}/MWh)"
             ]
         })
         tables['hydro'] = hydro_data
         
-        # BESS Table
-        bess_data = pd.DataFrame({
+        # ========================================================================
+        # BESS TABLE - PERFORMANCE METRICS
+        # ========================================================================
+        bess_performance = pd.DataFrame({
             'Metric': [
                 'Nominal Capacity',
                 'Usable Capacity',
@@ -585,7 +779,8 @@ def create_electrical_metrics_tables(electrical_metrics):
                 'Energy Out',
                 'Losses',
                 'Annual Throughput',
-                'Expected Life'
+                'Expected Life',
+                'Levelized Cost (LCOS)'
             ],
             'Value': [
                 f"{electrical_metrics['bess']['nominal_capacity_kwh']:,.1f} kWh",
@@ -595,13 +790,84 @@ def create_electrical_metrics_tables(electrical_metrics):
                 f"{electrical_metrics['bess']['energy_out_kwh']:,.0f} kWh/yr",
                 f"{electrical_metrics['bess']['losses_kwh']:,.0f} kWh/yr",
                 f"{electrical_metrics['bess']['annual_throughput_kwh']:,.0f} kWh/yr",
-                f"{electrical_metrics['bess']['expected_life_years']:.0f} years"
+                f"{electrical_metrics['bess']['expected_life_years']:.0f} years",
+                f"${electrical_metrics['bess']['levelized_cost_per_kwh']:.4f}/kWh (${electrical_metrics['bess'].get('levelized_cost_per_mwh', 0):.2f}/MWh)"
             ]
         })
-        tables['bess'] = bess_data
+        tables['bess_performance'] = bess_performance
+        
+        # ========================================================================
+        # BESS TABLE - SUNGROW DEPLOYMENT SPECIFICATIONS
+        # ========================================================================
+        if bess_capacity_mwh > 0:
+            deployment = calculate_bess_deployment_sungrow(bess_power_mw, bess_capacity_mwh)
+            
+            bess_deployment = pd.DataFrame({
+                'Metric': [
+                    '--- DEPLOYMENT SPECIFICATIONS ---',
+                    'OEM / Model',
+                    'Number of Containers',
+                    'Capacity per Container',
+                    'Container Dimensions (L×W×H)',
+                    'Actual Installed Capacity',
+                    'Actual Installed Power',
+                    '',
+                    'Layout Configuration',
+                    'Number of MVS5000 Units',
+                    '',
+                    'Container Footprint',
+                    'Site Dimensions (L×W)',
+                    'Total Site Area',
+                    'Area (hectares)',
+                    'Area (acres)',
+                    '',
+                    'Power Density',
+                    'Energy Density',
+                    '',
+                    '--- SPACING SPECIFICATIONS ---',
+                    'Back-to-back Spacing',
+                    'Adjacent Container Spacing',
+                    'Container to MVS Spacing',
+                    'Perimeter Clearance'
+                ],
+                'Value': [
+                    '',
+                    f"Sungrow {deployment['container_model']}",
+                    f"{deployment['num_containers']} units",
+                    f"{deployment['container_capacity_mwh']:.0f} MWh / {deployment['container_power_mw']:.0f} MW each",
+                    deployment['container_dimensions'],
+                    f"{deployment['actual_capacity_mwh']:.0f} MWh",
+                    f"{deployment['actual_power_mw']:.0f} MW",
+                    '',
+                    deployment['layout_description'],
+                    f"{deployment['num_mvs_units']} units",
+                    '',
+                    f"{deployment['container_footprint_m2']:,.1f} m²",
+                    deployment['site_dimensions'],
+                    f"{deployment['total_area_m2']:,.0f} m²",
+                    f"{deployment['total_area_hectares']:.4f} ha",
+                    f"{deployment['total_area_acres']:.3f} acres",
+                    '',
+                    f"{deployment['power_density_mw_per_ha']:.1f} MW/ha",
+                    f"{deployment['energy_density_mwh_per_ha']:.1f} MWh/ha",
+                    '',
+                    '',
+                    f"{deployment['spacing_back_to_back_mm']} mm (length direction)",
+                    f"{deployment['spacing_adjacent_mm']} mm (width direction)",
+                    f"{deployment['spacing_mvs_mm']} mm",
+                    f"{5000} mm (all sides)"
+                ]
+            })
+            tables['bess_deployment'] = bess_deployment
+        else:
+            # No BESS in configuration
+            bess_deployment = pd.DataFrame({
+                'Metric': ['Note'],
+                'Value': ['No BESS in optimal configuration']
+            })
+            tables['bess_deployment'] = bess_deployment
     
     return tables
-
 
 # ==============================================================================
 # ADDITIONAL SIMPLE CHARTS
@@ -704,7 +970,7 @@ with st.sidebar:
             pv_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="pv_opex")
         with col2:
             pv_lifetime = st.number_input("Lifetime (years)", value=25, step=1, key="pv_life")
-            pv_lcoe = st.number_input("LCOE ($/MWh)", value=35.0, step=1.0, key="pv_lcoe")
+            
     
     # Wind
     with st.expander("💨 WIND"):
@@ -723,7 +989,7 @@ with st.sidebar:
             wind_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="wind_opex")
         with col2:
             wind_lifetime = st.number_input("Lifetime (years)", value=20, step=1, key="wind_life")
-            wind_lcoe = st.number_input("LCOE ($/MWh)", value=45.0, step=1.0, key="wind_lcoe")
+            
     
     # Hydro
     with st.expander("💧 HYDRO"):
@@ -745,7 +1011,7 @@ with st.sidebar:
             hydro_opex = st.number_input("OpEx ($/kW/yr)", value=20, step=1, key="hydro_opex")
         with col2:
             hydro_lifetime = st.number_input("Lifetime (years)", value=50, step=1, key="hydro_life")
-            hydro_lcoe = st.number_input("LCOE ($/MWh)", value=40.0, step=1.0, key="hydro_lcoe")
+            
     
     # BESS
     with st.expander("🔋 BATTERY STORAGE"):
@@ -1251,7 +1517,12 @@ with tab3:
             st.plotly_chart(additional_charts['energy_mix'], use_container_width=True)
         
         st.markdown("---")
-        
+        st.subheader("📈 Typical Daily Dispatch Profile")
+
+        daily_profile_fig = create_typical_daily_dispatch_profile(results, optimal_row)
+        st.plotly_chart(daily_profile_fig, use_container_width=True)
+
+        st.caption("Shows average hourly generation, load, and BESS state across all days")
         # ============================================================
         # DOWNLOAD SECTION
         # ============================================================
@@ -1285,4 +1556,5 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>Renewable Energy Optimization Tool v3.0 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
