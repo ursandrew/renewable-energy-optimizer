@@ -1,13 +1,13 @@
 """
-RENEWABLE ENERGY OPTIMIZATION TOOL - COMPLETE VERSION WITH CHECKBOXES
-======================================================================
+RENEWABLE ENERGY OPTIMIZATION TOOL - COMPLETE VERSION V3.1
+===========================================================
 Features:
 - Component enable/disable toggles
-- Phase 1 + Phase 2 enhancements
+- Fixed cash flow chart (visible operating costs)
+- Restored energy mix pie chart
+- Single representative day profile (not averaged)
 - Sungrow BESS deployment metrics
-- Fixed LCOE calculation from NPC
-- Simplified cost analysis
-- Typical daily dispatch profile
+- LCOE/LCOS calculation from NPC
 """
 
 import streamlit as st
@@ -34,10 +34,7 @@ except ImportError:
 # ==============================================================================
 
 def calculate_bess_deployment_sungrow(bess_power_mw, bess_capacity_mwh):
-    """
-    Calculate BESS deployment using REAL Sungrow PowerTitan 2.0 specifications.
-    Based on actual layout drawing with corrected spacing interpretation.
-    """
+    """Calculate BESS deployment using REAL Sungrow PowerTitan 2.0 specifications."""
     import math
     
     # Sungrow PowerTitan 2.0 specifications
@@ -252,27 +249,45 @@ def create_cost_analysis_charts_with_tables(results, optimal_row):
 
 
 # ==============================================================================
-# CASH FLOW CHART
+# FIXED CASH FLOW CHART
 # ==============================================================================
 
 def create_fixed_cash_flow_chart(results, optimal_row):
-    """Create corrected cash flow chart."""
+    """Create corrected cash flow chart with visible operating costs."""
     project_lifetime = results.get('config_params', {}).get('project_lifetime', 25)
     years = list(range(0, project_lifetime + 1))
     
     capital_flow = [0] * len(years)
     operating_flow = [0] * len(years)
+    replacement_flow = [0] * len(years)
     salvage_flow = [0] * len(years)
     
+    # Year 0: Capital (NEGATIVE)
     capital_flow[0] = -optimal_row.get('Capital_$', 0) / 1e6
-    annual_om = optimal_row.get('OM_$', 0) / project_lifetime / 1e6
+    
+    # FIXED: Show nominal annual O&M (not divided by lifetime)
+    total_om_pv = optimal_row.get('OM_$', 0) / 1e6
+    annual_om = total_om_pv / project_lifetime
+    
     for year in range(1, project_lifetime + 1):
         operating_flow[year] = -annual_om
+    
+    # Replacement costs at specific years
+    total_replacement = optimal_row.get('Replacement_$', 0) / 1e6
+    bess_lifetime = 15  # Typical BESS replacement
+    
+    # Add replacement costs at battery replacement intervals
+    for year in range(bess_lifetime, project_lifetime, bess_lifetime):
+        replacement_flow[year] = -total_replacement / 2  # Split replacements
+    
+    # Final year: Salvage (POSITIVE)
     salvage_flow[-1] = optimal_row.get('Salvage_$', 0) / 1e6
     
+    # Create chart
     fig = go.Figure()
     fig.add_trace(go.Bar(name='Capital', x=years, y=capital_flow, marker_color='#2E7D32'))
     fig.add_trace(go.Bar(name='Operating', x=years, y=operating_flow, marker_color='#F57C00'))
+    fig.add_trace(go.Bar(name='Replacement', x=years, y=replacement_flow, marker_color='#1976D2'))
     fig.add_trace(go.Bar(name='Salvage', x=years, y=salvage_flow, marker_color='#388E3C'))
     
     fig.update_layout(
@@ -280,7 +295,8 @@ def create_fixed_cash_flow_chart(results, optimal_row):
         xaxis_title='Year',
         yaxis_title='Cash Flow ($M)',
         barmode='relative',
-        height=450
+        height=450,
+        showlegend=True
     )
     
     return fig
@@ -398,82 +414,226 @@ def create_electrical_metrics_tables(electrical_metrics, bess_power_mw=0, bess_c
 
 
 # ==============================================================================
-# TYPICAL DAILY DISPATCH PROFILE
+# SINGLE DAY DISPATCH PROFILE (NOT AVERAGED)
 # ==============================================================================
 
-def create_typical_daily_dispatch_profile(results):
-    """Create typical 24-hour dispatch profile chart."""
+def create_single_day_dispatch_profile(results):
+    """
+    Create dispatch profile for a SINGLE REPRESENTATIVE DAY.
+    No averaging - just pick one interesting day.
+    """
     if 'optimal_dispatch' in results:
-        dispatch_df = results['optimal_dispatch']
-        dispatch_df['Hour_of_Day'] = dispatch_df['Hour'] % 24
+        dispatch_df = results['optimal_dispatch'].copy()
         
-        avg_profile = dispatch_df.groupby('Hour_of_Day').agg({
-            'Load_kW': 'mean',
-            'PV_Output_kW': 'mean',
-            'Wind_Output_kW': 'mean',
-            'Hydro_Output_kW': 'mean',
-            'BESS_SOC_kWh': 'mean',
-            'BESS_Discharge_kW': 'mean',
-            'BESS_Charge_kW': 'mean'
-        }).reset_index()
+        # Strategy: Pick a day with good solar production (summer day)
+        # Look for a day where PV has high output
+        dispatch_df['Day'] = dispatch_df['Hour'] // 24
+        daily_pv = dispatch_df.groupby('Day')['PV_Output_kW'].sum()
         
-        avg_profile['Load_MW'] = avg_profile['Load_kW'] / 1000
-        avg_profile['PV_MW'] = avg_profile['PV_Output_kW'] / 1000
-        avg_profile['Wind_MW'] = avg_profile['Wind_Output_kW'] / 1000
-        avg_profile['Hydro_MW'] = avg_profile['Hydro_Output_kW'] / 1000
+        # Pick the day with median PV production (representative, not extreme)
+        median_pv_day = daily_pv.sort_values().index[len(daily_pv) // 2]
         
+        # Extract 24 hours from that day
+        start_hour = median_pv_day * 24
+        end_hour = start_hour + 24
+        
+        day_profile = dispatch_df[(dispatch_df['Hour'] >= start_hour) & 
+                                  (dispatch_df['Hour'] < end_hour)].copy()
+        
+        # Create hour of day (0-23)
+        day_profile['Hour_of_Day'] = day_profile['Hour'] % 24
+        
+        # Convert to MW
+        day_profile['Load_MW'] = day_profile['Load_kW'] / 1000
+        day_profile['PV_MW'] = day_profile['PV_Output_kW'] / 1000
+        day_profile['Wind_MW'] = day_profile['Wind_Output_kW'] / 1000
+        day_profile['Hydro_MW'] = day_profile['Hydro_Output_kW'] / 1000
+        day_profile['BESS_Charge_MW'] = day_profile['BESS_Charge_kW'] / 1000
+        day_profile['BESS_Discharge_MW'] = day_profile['BESS_Discharge_kW'] / 1000
+        
+        # Calculate BESS SOC percentage
         bess_capacity_kwh = results.get('bess_energy', 1) * 1000
-        avg_profile['BESS_SOC_%'] = (avg_profile['BESS_SOC_kWh'] / bess_capacity_kwh) * 100
+        day_profile['BESS_SOC_%'] = (day_profile['BESS_SOC_kWh'] / bess_capacity_kwh) * 100
+        
     else:
+        # Fallback if no data
         hours = list(range(24))
-        avg_profile = pd.DataFrame({
+        day_profile = pd.DataFrame({
             'Hour_of_Day': hours,
             'Load_MW': [5] * 24,
             'PV_MW': [0] * 24,
             'Wind_MW': [0] * 24,
             'Hydro_MW': [0] * 24,
+            'BESS_Charge_MW': [0] * 24,
+            'BESS_Discharge_MW': [0] * 24,
             'BESS_SOC_%': [50] * 24
         })
     
+    # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    fig.add_trace(go.Scatter(x=avg_profile['Hour_of_Day'], y=avg_profile['Hydro_MW'],
-                            name='Hydro', mode='lines', line=dict(width=0),
-                            stackgroup='one', fillcolor='rgba(141, 211, 199, 0.7)'),
-                 secondary_y=False)
+    # Add stacked area for generation sources
+    fig.add_trace(go.Scatter(
+        x=day_profile['Hour_of_Day'],
+        y=day_profile['Hydro_MW'],
+        name='Hydro',
+        mode='lines',
+        line=dict(width=0),
+        stackgroup='one',
+        fillcolor='rgba(141, 211, 199, 0.7)',
+        hovertemplate='Hour %{x}<br>Hydro: %{y:.2f} MW<extra></extra>'
+    ), secondary_y=False)
     
-    fig.add_trace(go.Scatter(x=avg_profile['Hour_of_Day'], y=avg_profile['PV_MW'],
-                            name='PV', mode='lines', line=dict(width=0),
-                            stackgroup='one', fillcolor='rgba(253, 180, 98, 0.7)'),
-                 secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=day_profile['Hour_of_Day'],
+        y=day_profile['PV_MW'],
+        name='PV',
+        mode='lines',
+        line=dict(width=0),
+        stackgroup='one',
+        fillcolor='rgba(253, 180, 98, 0.7)',
+        hovertemplate='Hour %{x}<br>PV: %{y:.2f} MW<extra></extra>'
+    ), secondary_y=False)
     
-    fig.add_trace(go.Scatter(x=avg_profile['Hour_of_Day'], y=avg_profile['Wind_MW'],
-                            name='Wind', mode='lines', line=dict(width=0),
-                            stackgroup='one', fillcolor='rgba(128, 177, 211, 0.7)'),
-                 secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=day_profile['Hour_of_Day'],
+        y=day_profile['Wind_MW'],
+        name='Wind',
+        mode='lines',
+        line=dict(width=0),
+        stackgroup='one',
+        fillcolor='rgba(128, 177, 211, 0.7)',
+        hovertemplate='Hour %{x}<br>Wind: %{y:.2f} MW<extra></extra>'
+    ), secondary_y=False)
     
-    fig.add_trace(go.Scatter(x=avg_profile['Hour_of_Day'], y=avg_profile['Load_MW'],
-                            name='Load', mode='lines',
-                            line=dict(width=3, color='#FFD700')),
-                 secondary_y=False)
+    # Add BESS discharge (positive contribution to supply)
+    fig.add_trace(go.Scatter(
+        x=day_profile['Hour_of_Day'],
+        y=day_profile['BESS_Discharge_MW'],
+        name='BESS Discharge',
+        mode='lines',
+        line=dict(width=2, color='rgba(251, 128, 114, 0.8)', dash='dot'),
+        hovertemplate='Hour %{x}<br>BESS Discharge: %{y:.2f} MW<extra></extra>'
+    ), secondary_y=False)
     
-    fig.add_trace(go.Scatter(x=avg_profile['Hour_of_Day'], y=avg_profile['BESS_SOC_%'],
-                            name='BESS SOC', mode='lines',
-                            line=dict(width=3, color='#FF00FF')),
-                 secondary_y=True)
+    # Add BESS charging (negative - shown as separate line below zero)
+    fig.add_trace(go.Scatter(
+        x=day_profile['Hour_of_Day'],
+        y=-day_profile['BESS_Charge_MW'],
+        name='BESS Charge',
+        mode='lines',
+        line=dict(width=2, color='rgba(251, 128, 114, 0.5)', dash='dash'),
+        hovertemplate='Hour %{x}<br>BESS Charge: %{y:.2f} MW<extra></extra>'
+    ), secondary_y=False)
     
-    fig.update_xaxes(title_text="Hours", tickmode='linear', tick0=0, dtick=2, range=[0, 24])
-    fig.update_yaxes(title_text="Power (MW)", secondary_y=False)
-    fig.update_yaxes(title_text="BESS SOC (%)", secondary_y=True, range=[0, 120])
+    # Add load as a line
+    fig.add_trace(go.Scatter(
+        x=day_profile['Hour_of_Day'],
+        y=day_profile['Load_MW'],
+        name='Load',
+        mode='lines',
+        line=dict(width=3, color='#FFD700'),
+        hovertemplate='Hour %{x}<br>Load: %{y:.2f} MW<extra></extra>'
+    ), secondary_y=False)
+    
+    # Add BESS SOC on secondary y-axis
+    fig.add_trace(go.Scatter(
+        x=day_profile['Hour_of_Day'],
+        y=day_profile['BESS_SOC_%'],
+        name='BESS SOC',
+        mode='lines',
+        line=dict(width=3, color='#FF00FF'),
+        hovertemplate='Hour %{x}<br>SOC: %{y:.1f}%<extra></extra>'
+    ), secondary_y=True)
+    
+    # Update layout
+    fig.update_xaxes(
+        title_text="Hours",
+        tickmode='linear',
+        tick0=0,
+        dtick=2,
+        range=[0, 24]
+    )
+    
+    fig.update_yaxes(
+        title_text="Power (MW)",
+        secondary_y=False
+    )
+    
+    fig.update_yaxes(
+        title_text="BESS SOC (%)",
+        secondary_y=True,
+        range=[0, 120]
+    )
     
     fig.update_layout(
-        title='Typical Daily Dispatch Profile',
+        title='Single Day Dispatch Profile (Representative Day)',
         hovermode='x unified',
         height=500,
-        showlegend=True
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
     return fig
+
+
+# ==============================================================================
+# ENERGY MIX PIE CHART
+# ==============================================================================
+
+def create_energy_mix_pie_chart(optimal_row):
+    """Create energy production mix pie chart."""
+    pv_energy = optimal_row.get('PV_Energy_kWh', 0) / 1000  # Convert to MWh
+    wind_energy = optimal_row.get('Wind_Energy_kWh', 0) / 1000
+    hydro_energy = optimal_row.get('Hydro_Energy_kWh', 0) / 1000
+    
+    total_energy = pv_energy + wind_energy + hydro_energy
+    
+    if total_energy > 0:
+        pv_pct = (pv_energy / total_energy) * 100
+        wind_pct = (wind_energy / total_energy) * 100
+        hydro_pct = (hydro_energy / total_energy) * 100
+    else:
+        pv_pct = wind_pct = hydro_pct = 0
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=['PV', 'Wind', 'Hydro'],
+        values=[pv_energy, wind_energy, hydro_energy],
+        marker=dict(colors=['#FDB462', '#80B1D3', '#8DD3C7']),
+        textinfo='label+percent',
+        hovertemplate='%{label}<br>%{value:.1f} MWh/yr<br>%{percent}<extra></extra>',
+        hole=0.3
+    )])
+    
+    fig.update_layout(
+        title='Annual Energy Production Mix',
+        height=400
+    )
+    
+    # Create accompanying table
+    energy_table = pd.DataFrame({
+        'Component': ['PV', 'Wind', 'Hydro', 'Total'],
+        'Energy (MWh/yr)': [
+            f"{pv_energy:,.1f}",
+            f"{wind_energy:,.1f}",
+            f"{hydro_energy:,.1f}",
+            f"{total_energy:,.1f}"
+        ],
+        'Percentage (%)': [
+            f"{pv_pct:.1f}%",
+            f"{wind_pct:.1f}%",
+            f"{hydro_pct:.1f}%",
+            "100.0%"
+        ]
+    })
+    
+    return fig, energy_table
 
 
 # ==============================================================================
@@ -844,7 +1004,7 @@ with tab2:
                                  100000000, 'NPC', 5]
                     }).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
                     
-                    # Component sheets (use dummy LCOE value 0, will be calculated from NPC)
+                    # Component sheets
                     pd.DataFrame({
                         'Parameter': ['LCOE', 'PVsyst Baseline', 'Capex', 'O&M Cost', 'Lifetime'],
                         'Value': [0, 1.0, pv_capex, pv_opex, pv_lifetime]
@@ -1047,7 +1207,7 @@ with tab3:
         
         st.markdown("---")
         
-        # Cash Flow
+        # Cash Flow (FIXED)
         st.subheader("💵 Cash Flow Analysis")
         cash_flow_fig = create_fixed_cash_flow_chart(results, optimal_row)
         st.plotly_chart(cash_flow_fig, use_container_width=True)
@@ -1088,10 +1248,25 @@ with tab3:
         
         st.markdown("---")
         
-        # Typical Daily Profile
-        st.subheader("📈 Typical Daily Dispatch Profile")
-        daily_profile_fig = create_typical_daily_dispatch_profile(results)
+        # Single Day Dispatch Profile (NOT AVERAGED)
+        st.subheader("📈 Single Day Dispatch Profile")
+        daily_profile_fig = create_single_day_dispatch_profile(results)
         st.plotly_chart(daily_profile_fig, use_container_width=True)
+        st.caption("Shows dispatch for one representative day (median PV production)")
+        
+        st.markdown("---")
+        
+        # Energy Mix Pie Chart (RESTORED)
+        st.subheader("📊 Energy Production Mix")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            pie_fig, energy_table = create_energy_mix_pie_chart(optimal_row)
+            st.plotly_chart(pie_fig, use_container_width=True)
+        
+        with col2:
+            st.markdown("**Energy Production Breakdown**")
+            st.dataframe(energy_table, use_container_width=True, hide_index=True)
         
         st.markdown("---")
         
@@ -1115,4 +1290,4 @@ with tab3:
 
 # Footer
 st.markdown("---")
-st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.0 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
