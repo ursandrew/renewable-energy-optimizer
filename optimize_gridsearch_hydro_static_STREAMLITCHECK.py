@@ -982,14 +982,17 @@ def grid_search_optimize_hydro(config, grid_config, solar, wind, hydro, bess,
 # STEP 6: CALCULATE ELECTRICAL METRICS
 # ==============================================================================
 
-def calculate_electrical_metrics(dispatch_df, component_capacities, component_configs):
+def calculate_electrical_metrics(dispatch_df, component_capacities, component_configs, 
+                                component_npc_data, project_lifetime):
     """
-    Calculate electrical performance metrics for all components from dispatch results.
+    Calculate electrical performance metrics including actual LCOE from NPC.
     
     Args:
         dispatch_df: DataFrame with hourly dispatch results
         component_capacities: dict with 'pv_kw', 'wind_kw', 'hydro_kw', 'bess_kwh'
-        component_configs: dict with LCOE values and BESS parameters
+        component_configs: dict with component parameters
+        component_npc_data: dict with NPC breakdown from calculate_npc_homer_style
+        project_lifetime: Project lifetime in years
     
     Returns:
         Dictionary with metrics for PV, Wind, Hydro, and BESS
@@ -1004,7 +1007,13 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         pv_hours_operation = (pv_output > 0).sum()
         pv_mean_output = pv_output[pv_output > 0].mean() if pv_hours_operation > 0 else 0
         pv_capacity_factor = (pv_total_production / (component_capacities['pv_kw'] * 8760)) * 100
-        pv_lcoe = component_configs['pv_lcoe']
+        
+        # Calculate actual LCOE from NPC
+        pv_lcoe = calculate_component_lcoe_from_npc(
+            component_npc_data['pv']['npc'],
+            pv_total_production,
+            project_lifetime
+        )
         
         metrics['pv'] = {
             'rated_capacity_kw': component_capacities['pv_kw'],
@@ -1012,11 +1021,15 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
             'capacity_factor_pct': pv_capacity_factor,
             'total_production_kwh': pv_total_production,
             'hours_of_operation': pv_hours_operation,
-            'levelized_cost_per_kwh': pv_lcoe / 1000
+            'levelized_cost_per_kwh': pv_lcoe,
+            'levelized_cost_per_mwh': pv_lcoe * 1000
         }
     else:
-        metrics['pv'] = {'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
-                        'total_production_kwh': 0, 'hours_of_operation': 0, 'levelized_cost_per_kwh': 0}
+        metrics['pv'] = {
+            'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
+            'total_production_kwh': 0, 'hours_of_operation': 0, 
+            'levelized_cost_per_kwh': 0, 'levelized_cost_per_mwh': 0
+        }
     
     # Wind Metrics
     if component_capacities['wind_kw'] > 0:
@@ -1025,7 +1038,13 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         wind_hours_operation = (wind_output > 0).sum()
         wind_mean_output = wind_output[wind_output > 0].mean() if wind_hours_operation > 0 else 0
         wind_capacity_factor = (wind_total_production / (component_capacities['wind_kw'] * 8760)) * 100
-        wind_lcoe = component_configs['wind_lcoe']
+        
+        # Calculate actual LCOE from NPC
+        wind_lcoe = calculate_component_lcoe_from_npc(
+            component_npc_data['wind']['npc'],
+            wind_total_production,
+            project_lifetime
+        )
         
         metrics['wind'] = {
             'rated_capacity_kw': component_capacities['wind_kw'],
@@ -1033,11 +1052,15 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
             'capacity_factor_pct': wind_capacity_factor,
             'total_production_kwh': wind_total_production,
             'hours_of_operation': wind_hours_operation,
-            'levelized_cost_per_kwh': wind_lcoe / 1000
+            'levelized_cost_per_kwh': wind_lcoe,
+            'levelized_cost_per_mwh': wind_lcoe * 1000
         }
     else:
-        metrics['wind'] = {'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
-                          'total_production_kwh': 0, 'hours_of_operation': 0, 'levelized_cost_per_kwh': 0}
+        metrics['wind'] = {
+            'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
+            'total_production_kwh': 0, 'hours_of_operation': 0,
+            'levelized_cost_per_kwh': 0, 'levelized_cost_per_mwh': 0
+        }
     
     # Hydro Metrics
     if component_capacities['hydro_kw'] > 0:
@@ -1046,7 +1069,13 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         hydro_hours_operation = (hydro_output > 0).sum()
         hydro_mean_output = hydro_output[hydro_output > 0].mean() if hydro_hours_operation > 0 else 0
         hydro_capacity_factor = (hydro_total_production / (component_capacities['hydro_kw'] * 8760)) * 100
-        hydro_lcoe = component_configs['hydro_lcoe']
+        
+        # Calculate actual LCOE from NPC
+        hydro_lcoe = calculate_component_lcoe_from_npc(
+            component_npc_data['hydro']['npc'],
+            hydro_total_production,
+            project_lifetime
+        )
         
         metrics['hydro'] = {
             'rated_capacity_kw': component_capacities['hydro_kw'],
@@ -1054,11 +1083,15 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
             'capacity_factor_pct': hydro_capacity_factor,
             'total_production_kwh': hydro_total_production,
             'hours_of_operation': hydro_hours_operation,
-            'levelized_cost_per_kwh': hydro_lcoe / 1000
+            'levelized_cost_per_kwh': hydro_lcoe,
+            'levelized_cost_per_mwh': hydro_lcoe * 1000
         }
     else:
-        metrics['hydro'] = {'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
-                           'total_production_kwh': 0, 'hours_of_operation': 0, 'levelized_cost_per_kwh': 0}
+        metrics['hydro'] = {
+            'rated_capacity_kw': 0, 'mean_output_kw': 0, 'capacity_factor_pct': 0,
+            'total_production_kwh': 0, 'hours_of_operation': 0,
+            'levelized_cost_per_kwh': 0, 'levelized_cost_per_mwh': 0
+        }
     
     # BESS Metrics
     if component_capacities['bess_kwh'] > 0:
@@ -1071,8 +1104,17 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         annual_throughput = energy_out
         
         mean_load = dispatch_df['Load_kW'].mean()
-        usable_capacity = component_capacities['bess_kwh'] * (component_configs['bess_max_soc'] - component_configs['bess_min_soc'])
+        usable_capacity = component_capacities['bess_kwh'] * (
+            component_configs['bess_max_soc'] - component_configs['bess_min_soc']
+        )
         autonomy_hours = usable_capacity / mean_load if mean_load > 0 else 0
+        
+        # Calculate actual LCOS from NPC
+        bess_lcos = calculate_bess_lcos_from_npc(
+            component_npc_data['bess']['npc'],
+            annual_throughput,
+            project_lifetime
+        )
         
         metrics['bess'] = {
             'nominal_capacity_kwh': component_capacities['bess_kwh'],
@@ -1082,14 +1124,59 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
             'energy_out_kwh': energy_out,
             'losses_kwh': losses,
             'annual_throughput_kwh': annual_throughput,
-            'expected_life_years': component_configs['bess_lifetime']
+            'expected_life_years': component_configs['bess_lifetime'],
+            'levelized_cost_per_kwh': bess_lcos,
+            'levelized_cost_per_mwh': bess_lcos * 1000
         }
     else:
-        metrics['bess'] = {'nominal_capacity_kwh': 0, 'usable_capacity_kwh': 0, 'autonomy_hours': 0,
-                          'energy_in_kwh': 0, 'energy_out_kwh': 0, 'losses_kwh': 0,
-                          'annual_throughput_kwh': 0, 'expected_life_years': 0}
+        metrics['bess'] = {
+            'nominal_capacity_kwh': 0, 'usable_capacity_kwh': 0, 'autonomy_hours': 0,
+            'energy_in_kwh': 0, 'energy_out_kwh': 0, 'losses_kwh': 0,
+            'annual_throughput_kwh': 0, 'expected_life_years': 0,
+            'levelized_cost_per_kwh': 0, 'levelized_cost_per_mwh': 0
+        }
     
     return metrics
+def calculate_component_lcoe_from_npc(component_npc, annual_energy_kwh, project_lifetime):
+    """
+    Calculate component-specific LCOE from NPC and energy production.
+    
+    Args:
+        component_npc: Component Net Present Cost ($)
+        annual_energy_kwh: Annual energy production (kWh/year)
+        project_lifetime: Project lifetime (years)
+    
+    Returns:
+        LCOE in $/kWh
+    """
+    if annual_energy_kwh <= 0:
+        return 0.0
+    
+    total_lifetime_energy = annual_energy_kwh * project_lifetime
+    lcoe = component_npc / total_lifetime_energy
+    
+    return lcoe
+
+
+def calculate_bess_lcos_from_npc(bess_npc, annual_throughput_kwh, project_lifetime):
+    """
+    Calculate BESS Levelized Cost of Storage (LCOS) from NPC and throughput.
+    
+    Args:
+        bess_npc: BESS Net Present Cost ($)
+        annual_throughput_kwh: Annual energy throughput (kWh/year discharged)
+        project_lifetime: Project lifetime (years)
+    
+    Returns:
+        LCOS in $/kWh
+    """
+    if annual_throughput_kwh <= 0:
+        return 0.0
+    
+    total_lifetime_throughput = annual_throughput_kwh * project_lifetime
+    lcos = bess_npc / total_lifetime_throughput
+    
+    return lcos
 # ==============================================================================
 # STEP 7: FIND OPTIMAL SOLUTION
 # ==============================================================================
@@ -1459,8 +1546,10 @@ def main():
             'bess_min_soc': bess['min_soc'],
             'bess_lifetime': bess['lifetime']
         }
+        npc_data = calculate_npc_homer_style(optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'], optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
+                                              solar, wind, hydro, bess, config, None, False, optimal['Total_Energy_Served_kWh'])
         
-        electrical_metrics = calculate_electrical_metrics(optimal_dispatch, component_capacities, component_configs)
+        electrical_metrics = calculate_electrical_metrics(optimal_dispatch, component_capacities, component_configs, npc_data, config['project_lifetime'])
         
         # NOW save results (includes electrical metrics in Sheet 6)
         write_results(results_df, optimal, config, grid_config, solar, wind, hydro, bess,
@@ -1487,3 +1576,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
