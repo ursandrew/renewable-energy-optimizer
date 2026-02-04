@@ -820,7 +820,7 @@ with st.sidebar:
     
     # Optimization Settings
     with st.expander("🎯 OPTIMIZATION SETTINGS"):
-        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=5.0, step=0.1, key="target_unmet")
+        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=25.0, step=0.1, key="target_unmet")
     
     # File Uploads
     st.header("📁 Upload Profiles")
@@ -1376,5 +1376,6 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
 
