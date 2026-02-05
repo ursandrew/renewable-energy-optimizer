@@ -1368,7 +1368,7 @@ with tab3:
                 type="primary"
             )
     # ===== DEGRADATION RESULTS =====
-  if apply_degradation and DEGRADATION_AVAILABLE:
+    if apply_degradation and DEGRADATION_AVAILABLE:
        st.markdown("---")
        st.subheader("🔬 Degradation Analysis (25 Years)")
     
@@ -1433,3 +1433,4 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
