@@ -30,6 +30,8 @@ def run_degradation_analysis(optimal_row, config_params, hourly_data=None):
     lcoe_y1 = optimal_row.get('LCOE', 0)
     
     # Get parameters
+    # CRITICAL: Check if discount_rate is in percentage (8.0) or decimal (0.08) form
+    # If discount_rate > 1, it's in percentage form and needs division by 100
     discount_rate = config_params.get('discount_rate', 0.08) / 100 if config_params.get('discount_rate', 8) > 1 else config_params.get('discount_rate', 0.08)
     
     # Simulate 25 years (simplified)
