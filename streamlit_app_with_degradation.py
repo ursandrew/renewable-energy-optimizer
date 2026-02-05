@@ -670,12 +670,30 @@ with st.sidebar:
     st.subheader("🔌 Component Selection")
     st.markdown("**Select components to include:**")
     
+    # Degradation checkbox (moved here for logic flow)
+    apply_degradation = st.checkbox(
+        "🔬 Apply Degradation Analysis (PV + BESS only)",
+        value=False,
+        help="25-year PV + BESS degradation with replacement. Wind and Hydro will be disabled.",
+        key="apply_degradation"
+    )
+    
     col1, col2 = st.columns(2)
     with col1:
         enable_pv = st.checkbox("☀️ Solar PV", value=True, key="enable_pv")
-        enable_wind = st.checkbox("💨 Wind", value=True, key="enable_wind")
+        # Disable wind if degradation is enabled
+        if apply_degradation:
+            enable_wind = False
+            st.checkbox("💨 Wind", value=False, disabled=True, key="enable_wind", help="Disabled during degradation analysis")
+        else:
+            enable_wind = st.checkbox("💨 Wind", value=True, key="enable_wind")
     with col2:
-        enable_hydro = st.checkbox("💧 Hydro", value=True, key="enable_hydro")
+        # Disable hydro if degradation is enabled
+        if apply_degradation:
+            enable_hydro = False
+            st.checkbox("💧 Hydro", value=False, disabled=True, key="enable_hydro", help="Disabled during degradation analysis")
+        else:
+            enable_hydro = st.checkbox("💧 Hydro", value=True, key="enable_hydro")
         enable_bess = st.checkbox("🔋 BESS", value=True, key="enable_bess")
     
     if not any([enable_pv, enable_wind, enable_hydro, enable_bess]):
@@ -797,12 +815,12 @@ with st.sidebar:
             col1, col2 = st.columns(2)
             with col1:
                 bess_duration = st.number_input("Duration (hours)", value=4.0, min_value=0.5, step=0.5, key="bess_dur")
-                bess_min_soc = st.number_input("Min SOC (%)", value=20, min_value=0, max_value=100, key="bess_min_soc")
-                bess_charge_eff = st.number_input("Charging Eff (%)", value=95, min_value=50, max_value=100, key="bess_charge_eff")
+                bess_min_soc = st.number_input("Min SOC (%)", value=20.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
+                bess_charge_eff = st.number_input("Charging Eff (%)", value=92.94, min_value=50.0, max_value=100.0, step=0.01, key="bess_charge_eff")
             with col2:
                 bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
-                bess_max_soc = st.number_input("Max SOC (%)", value=100, min_value=0, max_value=100, key="bess_max_soc")
-                bess_discharge_eff = st.number_input("Discharging Eff (%)", value=95, min_value=50, max_value=100, key="bess_discharge_eff")
+                bess_max_soc = st.number_input("Max SOC (%)", value=100.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
+                bess_discharge_eff = st.number_input("Discharging Eff (%)", value=91.78, min_value=50.0, max_value=100.0, step=0.01, key="bess_discharge_eff")
             
             st.subheader("Financial Parameters")
             col1, col2 = st.columns(2)
@@ -820,7 +838,7 @@ with st.sidebar:
     
     # Optimization Settings
     with st.expander("🎯 OPTIMIZATION SETTINGS"):
-        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=25.0, step=0.1, key="target_unmet")
+        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=5.0, step=0.1, key="target_unmet")
     
     # File Uploads
     st.header("📁 Upload Profiles")
@@ -843,22 +861,14 @@ with st.sidebar:
     else:
         hydro_file = None
         st.caption("⚠️ Hydro profile not required (Hydro disabled)")
-    # ===== DEGRADATION SECTION =====
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔬 Advanced Analysis")
-
-    apply_degradation = st.sidebar.checkbox(
-        "Apply Degradation Analysis",
-       value=False,
-       help="25-year PV + BESS degradation with replacement"
-    )
-
+    # ===== DEGRADATION INFO =====
     if apply_degradation:
         st.sidebar.info("""
         **Degradation Applied:**
         - PV: ~9.8% over 25 years
         - BESS: ~31% loss by year 20
         - BESS replaced at year 21
+        - Wind & Hydro disabled
         """)
 # ===== END DEGRADATION SECTION =====
 
@@ -1183,6 +1193,53 @@ with tab3:
         with col3:
             st.metric("Unmet Load", f"{results['unmet_pct']:.3f}%")
         
+        # NPC BREAKDOWN DEBUG
+        with st.expander("🔍 NPC Calculation Breakdown (Debug)", expanded=False):
+            st.markdown("### Component NPC Breakdown")
+            
+            pv_npc = optimal_row.get('PV_NPC_$', 0)
+            wind_npc = optimal_row.get('Wind_NPC_$', 0)
+            hydro_npc = optimal_row.get('Hydro_NPC_$', 0)
+            bess_npc = optimal_row.get('BESS_NPC_$', 0)
+            total_npc_check = pv_npc + wind_npc + hydro_npc + bess_npc
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write(f"**PV NPC:** ${pv_npc/1e6:.3f}M")
+                st.write(f"**Wind NPC:** ${wind_npc/1e6:.3f}M")
+            with col2:
+                st.write(f"**Hydro NPC:** ${hydro_npc/1e6:.3f}M")
+                st.write(f"**BESS NPC:** ${bess_npc/1e6:.3f}M")
+            with col3:
+                st.write(f"**Sum of Components:** ${total_npc_check/1e6:.3f}M")
+                st.write(f"**Reported Total NPC:** ${results['npc']/1e6:.3f}M")
+            
+            if abs(total_npc_check - results['npc']) > 1:
+                st.warning(f"⚠️ NPC Mismatch: ${abs(total_npc_check - results['npc'])/1e6:.3f}M difference")
+            else:
+                st.success("✅ NPC components sum correctly")
+            
+            st.markdown("### Configuration Parameters")
+            config = results.get('config_params', {})
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                discount = config.get('discount_rate', 0)
+                st.write(f"**Discount Rate:** {discount*100:.2f}%" if discount < 1 else f"{discount:.2f}%")
+            with col2:
+                st.write(f"**Project Lifetime:** {config.get('project_lifetime', 0)} years")
+            with col3:
+                inflation = config.get('inflation_rate', 0)
+                st.write(f"**Inflation Rate:** {inflation*100:.2f}%" if inflation < 1 else f"{inflation:.2f}%")
+            
+            st.markdown("### LCOE Calculation Check")
+            st.write(f"**LCOE Formula:** Total NPC / Discounted Total Energy Served")
+            if 'electrical_metrics' in results:
+                em = results['electrical_metrics']
+                energy_served = em.get('total_energy_served_mwh', 0)
+                st.write(f"**Annual Energy Served:** {energy_served:,.0f} MWh/year")
+                st.write(f"**LCOE from metrics:** ${em.get('system_lcoe', 0):.2f}/MWh")
+
+        
         # Component Configuration
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -1311,7 +1368,7 @@ with tab3:
                 type="primary"
             )
     # ===== DEGRADATION RESULTS =====
-    if apply_degradation and DEGRADATION_AVAILABLE:
+  if apply_degradation and DEGRADATION_AVAILABLE:
        st.markdown("---")
        st.subheader("🔬 Degradation Analysis (25 Years)")
     
@@ -1376,6 +1433,3 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
-
-
-
