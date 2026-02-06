@@ -121,7 +121,10 @@ def calculate_bess_deployment_sungrow(bess_power_mw, bess_capacity_mwh):
 # ==============================================================================
 
 def export_results_industry_format(results_dict, results_df, optimal_row, config_params):
-    """Export results in industry standard Excel format."""
+    """
+    Export results in industry standard Excel format.
+    NOW INCLUDES: 25-year hourly dispatch sheets (if degradation analysis available)
+    """
     output = BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -159,18 +162,60 @@ def export_results_industry_format(results_dict, results_df, optimal_row, config
                 optimal_row.get('BESS_Capital_$', 0),
                 optimal_row.get('Capital_$', 0)
             ],
+            'Replacement ($)': [
+                optimal_row.get('PV_Replacement_$', 0),
+                optimal_row.get('Wind_Replacement_$', 0),
+                optimal_row.get('Hydro_Replacement_$', 0),
+                optimal_row.get('BESS_Replacement_$', 0),
+                optimal_row.get('Replacement_$', 0)
+            ],
+            'OM ($)': [
+                optimal_row.get('PV_OM_$', 0),
+                optimal_row.get('Wind_OM_$', 0),
+                optimal_row.get('Hydro_OM_$', 0),
+                optimal_row.get('BESS_OM_$', 0),
+                optimal_row.get('OM_$', 0)
+            ],
+            'Salvage ($)': [
+                optimal_row.get('PV_Salvage_$', 0),
+                optimal_row.get('Wind_Salvage_$', 0),
+                optimal_row.get('Hydro_Salvage_$', 0),
+                optimal_row.get('BESS_Salvage_$', 0),
+                optimal_row.get('Salvage_$', 0)
+            ],
             'NPC ($)': [
                 optimal_row.get('PV_NPC_$', 0),
                 optimal_row.get('Wind_NPC_$', 0),
                 optimal_row.get('Hydro_NPC_$', 0),
                 optimal_row.get('BESS_NPC_$', 0),
                 optimal_row.get('NPC_$', 0)
+            ],
+            'Annualized ($/yr)': [
+                optimal_row.get('PV_Annualized_$/yr', 0),
+                optimal_row.get('Wind_Annualized_$/yr', 0),
+                optimal_row.get('Hydro_Annualized_$/yr', 0),
+                optimal_row.get('BESS_Annualized_$/yr', 0),
+                optimal_row.get('Annualized_$/yr', 0)
             ]
         })
         cost_breakdown.to_excel(writer, sheet_name='Cost_Breakdown', index=False)
         
         # Sheet 3: All Results
         results_df.to_excel(writer, sheet_name='All_Results', index=False)
+        
+        # Sheet 4: Year 1 Hourly Dispatch (Year 1 only from optimal_dispatch)
+        if 'optimal_dispatch' in results_dict:
+            year1_dispatch = results_dict['optimal_dispatch'].copy()
+            year1_dispatch.to_excel(writer, sheet_name='Year_1_Hourly', index=False)
+        
+        # Sheets 5-29: 25-Year Hourly Dispatch (if degradation data available)
+        if 'degradation_hourly' in results_dict:
+            hourly_by_year = results_dict['degradation_hourly']
+            
+            for year in range(1, 26):  # Years 1-25
+                if year in hourly_by_year:
+                    sheet_name = f'Year_{year}_Hourly'
+                    hourly_by_year[year].to_excel(writer, sheet_name=sheet_name, index=False)
     
     output.seek(0)
     return output
@@ -258,24 +303,20 @@ def create_cost_analysis_charts_with_tables(results, optimal_row):
 # ==============================================================================
 
 def create_fixed_cash_flow_chart(results, optimal_row):
-    """Create corrected cash flow chart with visible operating costs."""
+    """
+    Create simplified cash flow chart.
+    FIXED: Removed operating costs (too small to visualize properly).
+    Shows only: Capital (Year 0), Replacement (mid-life), Salvage (Year 25)
+    """
     project_lifetime = results.get('config_params', {}).get('project_lifetime', 25)
     years = list(range(0, project_lifetime + 1))
     
     capital_flow = [0] * len(years)
-    operating_flow = [0] * len(years)
     replacement_flow = [0] * len(years)
     salvage_flow = [0] * len(years)
     
     # Year 0: Capital (NEGATIVE)
     capital_flow[0] = -optimal_row.get('Capital_$', 0) / 1e6
-    
-    # FIXED: Show nominal annual O&M (not divided by lifetime)
-    total_om_pv = optimal_row.get('OM_$', 0) / 1e6
-    annual_om = total_om_pv / project_lifetime
-    
-    for year in range(1, project_lifetime + 1):
-        operating_flow[year] = -annual_om
     
     # Replacement costs at specific years
     total_replacement = optimal_row.get('Replacement_$', 0) / 1e6
@@ -283,7 +324,7 @@ def create_fixed_cash_flow_chart(results, optimal_row):
     
     # Add replacement costs at battery replacement intervals
     for year in range(bess_lifetime, project_lifetime, bess_lifetime):
-        replacement_flow[year] = -total_replacement / 2  # Split replacements
+        replacement_flow[year] = -total_replacement
     
     # Final year: Salvage (POSITIVE)
     salvage_flow[-1] = optimal_row.get('Salvage_$', 0) / 1e6
@@ -291,17 +332,25 @@ def create_fixed_cash_flow_chart(results, optimal_row):
     # Create chart
     fig = go.Figure()
     fig.add_trace(go.Bar(name='Capital', x=years, y=capital_flow, marker_color='#2E7D32'))
-    fig.add_trace(go.Bar(name='Operating', x=years, y=operating_flow, marker_color='#F57C00'))
     fig.add_trace(go.Bar(name='Replacement', x=years, y=replacement_flow, marker_color='#1976D2'))
     fig.add_trace(go.Bar(name='Salvage', x=years, y=salvage_flow, marker_color='#388E3C'))
     
     fig.update_layout(
-        title='Nominal Cash Flow',
+        title='Nominal Cash Flow (Major Costs Only)',
         xaxis_title='Year',
         yaxis_title='Cash Flow ($M)',
         barmode='relative',
         height=450,
-        showlegend=True
+        showlegend=True,
+        annotations=[
+            dict(
+                text="Note: Annual O&M costs not shown (too small to visualize effectively)",
+                xref="paper", yref="paper",
+                x=0.5, y=-0.15,
+                showarrow=False,
+                font=dict(size=10, color="gray")
+            )
+        ]
     )
     
     return fig
@@ -426,6 +475,7 @@ def create_single_day_dispatch_profile(results):
     """
     Create dispatch profile for a SINGLE REPRESENTATIVE DAY.
     No averaging - just pick one interesting day.
+    FIXED: Remove BESS charge/discharge lines, only show SOC.
     """
     if 'optimal_dispatch' in results:
         dispatch_df = results['optimal_dispatch'].copy()
@@ -453,12 +503,15 @@ def create_single_day_dispatch_profile(results):
         day_profile['PV_MW'] = day_profile['PV_Output_kW'] / 1000
         day_profile['Wind_MW'] = day_profile['Wind_Output_kW'] / 1000
         day_profile['Hydro_MW'] = day_profile['Hydro_Output_kW'] / 1000
-        day_profile['BESS_Charge_MW'] = day_profile['BESS_Charge_kW'] / 1000
-        day_profile['BESS_Discharge_MW'] = day_profile['BESS_Discharge_kW'] / 1000
         
-        # Calculate BESS SOC percentage
+        # Calculate BESS SOC percentage (ensure it stays 0-100%)
         bess_capacity_kwh = results.get('bess_energy', 1) * 1000
-        day_profile['BESS_SOC_%'] = (day_profile['BESS_SOC_kWh'] / bess_capacity_kwh) * 100
+        if bess_capacity_kwh > 0:
+            day_profile['BESS_SOC_%'] = (day_profile['BESS_SOC_kWh'] / bess_capacity_kwh) * 100
+            # Clamp to 0-100% range
+            day_profile['BESS_SOC_%'] = day_profile['BESS_SOC_%'].clip(0, 100)
+        else:
+            day_profile['BESS_SOC_%'] = 50
         
     else:
         # Fallback if no data
@@ -469,8 +522,6 @@ def create_single_day_dispatch_profile(results):
             'PV_MW': [0] * 24,
             'Wind_MW': [0] * 24,
             'Hydro_MW': [0] * 24,
-            'BESS_Charge_MW': [0] * 24,
-            'BESS_Discharge_MW': [0] * 24,
             'BESS_SOC_%': [50] * 24
         })
     
@@ -511,26 +562,6 @@ def create_single_day_dispatch_profile(results):
         hovertemplate='Hour %{x}<br>Wind: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
-    # Add BESS discharge (positive contribution to supply)
-    fig.add_trace(go.Scatter(
-        x=day_profile['Hour_of_Day'],
-        y=day_profile['BESS_Discharge_MW'],
-        name='BESS Discharge',
-        mode='lines',
-        line=dict(width=2, color='rgba(251, 128, 114, 0.8)', dash='dot'),
-        hovertemplate='Hour %{x}<br>BESS Discharge: %{y:.2f} MW<extra></extra>'
-    ), secondary_y=False)
-    
-    # Add BESS charging (negative - shown as separate line below zero)
-    fig.add_trace(go.Scatter(
-        x=day_profile['Hour_of_Day'],
-        y=-day_profile['BESS_Charge_MW'],
-        name='BESS Charge',
-        mode='lines',
-        line=dict(width=2, color='rgba(251, 128, 114, 0.5)', dash='dash'),
-        hovertemplate='Hour %{x}<br>BESS Charge: %{y:.2f} MW<extra></extra>'
-    ), secondary_y=False)
-    
     # Add load as a line
     fig.add_trace(go.Scatter(
         x=day_profile['Hour_of_Day'],
@@ -541,7 +572,7 @@ def create_single_day_dispatch_profile(results):
         hovertemplate='Hour %{x}<br>Load: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
-    # Add BESS SOC on secondary y-axis
+    # Add BESS SOC on secondary y-axis (ONLY SOC, no charge/discharge)
     fig.add_trace(go.Scatter(
         x=day_profile['Hour_of_Day'],
         y=day_profile['BESS_SOC_%'],
@@ -568,7 +599,7 @@ def create_single_day_dispatch_profile(results):
     fig.update_yaxes(
         title_text="BESS SOC (%)",
         secondary_y=True,
-        range=[0, 120]
+        range=[0, 120]  # Allow some headroom
     )
     
     fig.update_layout(
@@ -838,7 +869,7 @@ with st.sidebar:
     
     # Optimization Settings
     with st.expander("🎯 OPTIMIZATION SETTINGS"):
-        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=25.0, step=0.1, key="target_unmet")
+        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=5.0, step=0.1, key="target_unmet")
     
     # File Uploads
     st.header("📁 Upload Profiles")
@@ -1232,12 +1263,61 @@ with tab3:
                 st.write(f"**Inflation Rate:** {inflation*100:.2f}%" if inflation < 1 else f"{inflation:.2f}%")
             
             st.markdown("### LCOE Calculation Check")
-            st.write(f"**LCOE Formula:** Total NPC / Discounted Total Energy Served")
+            st.write(f"**LCOE Formula:** Annualized Cost / Annual Energy Delivered")
+            st.write(f"**Method:** Industry Standard (HOMER Pro / NREL)")
+            
             if 'electrical_metrics' in results:
                 em = results['electrical_metrics']
-                energy_served = em.get('total_energy_served_mwh', 0)
-                st.write(f"**Annual Energy Served:** {energy_served:,.0f} MWh/year")
-                st.write(f"**LCOE from metrics:** ${em.get('system_lcoe', 0):.2f}/MWh")
+                
+                # Get financial params
+                config = results.get('config_params', {})
+                discount_rate = config.get('discount_rate', 8.0) / 100 if config.get('discount_rate', 8.0) >= 1 else config.get('discount_rate', 0.08)
+                project_lifetime = config.get('project_lifetime', 25)
+                
+                # Calculate CRF
+                crf = discount_rate * (1 + discount_rate)**project_lifetime / ((1 + discount_rate)**project_lifetime - 1)
+                
+                # Calculate components
+                total_npc = results.get('npc', 0)
+                annualized_cost = total_npc * crf
+                
+                # Energy delivered (not generation)
+                total_load_mwh = em.get('total_load_mwh', 0)
+                unmet_pct = results.get('unmet_pct', 0) / 100
+                energy_delivered_mwh = total_load_mwh * (1 - unmet_pct)
+                
+                # Calculate LCOE
+                lcoe_calculated = (annualized_cost / (energy_delivered_mwh * 1000)) if energy_delivered_mwh > 0 else 0
+                lcoe_mwh = lcoe_calculated * 1000
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Total NPC:** ${total_npc/1e6:.3f}M")
+                    st.write(f"**CRF:** {crf:.6f}")
+                    st.write(f"**Annualized Cost:** ${annualized_cost:,.0f}/year")
+                
+                with col2:
+                    st.write(f"**Total Load:** {total_load_mwh:,.0f} MWh/year")
+                    st.write(f"**Unmet Load:** {unmet_pct*100:.2f}%")
+                    st.write(f"**Energy Delivered:** {energy_delivered_mwh:,.0f} MWh/year")
+                
+                st.write(f"**Calculated LCOE:** ${lcoe_calculated:.4f}/kWh = ${lcoe_mwh:.2f}/MWh")
+                st.write(f"**Reported LCOE:** ${results.get('lcoe', 0):.2f}/MWh")
+                
+                # Check match
+                diff = abs(lcoe_mwh - results.get('lcoe', 0))
+                if diff < 1.0:
+                    st.success(f"✅ LCOE values match (difference: ${diff:.2f}/MWh)")
+                else:
+                    st.warning(f"⚠️ LCOE mismatch: ${diff:.2f}/MWh difference")
+                    
+                st.info("""
+                **LCOE Methodology:**
+                - Uses **Energy Delivered** (not PV generation)
+                - Follows HOMER Pro / NREL / IEA standards
+                - Accounts for unmet load and system losses
+                - Industry-standard annualized cost method
+                """)
 
         
         # Component Configuration
@@ -1368,7 +1448,7 @@ with tab3:
                 type="primary"
             )
     # ===== DEGRADATION RESULTS =====
-    if apply_degradation and DEGRADATION_AVAILABLE:
+  if apply_degradation and DEGRADATION_AVAILABLE:
        st.markdown("---")
        st.subheader("🔬 Degradation Analysis (25 Years)")
     
@@ -1433,5 +1513,3 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
-
-
