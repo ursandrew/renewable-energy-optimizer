@@ -1280,11 +1280,17 @@ with tab3:
                 # Calculate components
                 total_npc = results.get('npc', 0)
                 annualized_cost = total_npc * crf
-                
                 # Energy delivered (not generation)
-                total_load_mwh = em.get('total_load_mwh', 0)
-                unmet_pct = results.get('unmet_pct', 0) / 100
-                energy_delivered_mwh = total_load_mwh * (1 - unmet_pct)
+                if 'optimal_dispatch' in results:
+                    total_load_kwh = results['optimal_dispatch']['Load_kW'].sum()
+                    total_unmet_kwh = results['optimal_dispatch']['Unmet_kW'].sum()
+                    energy_delivered_kwh = total_load_kwh - total_unmet_kwh
+                    energy_delivered_mwh = energy_delivered_kwh / 1000
+                else:
+                   # Fallback to using optimal_row data
+                    total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
+                    energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
+                    energy_delivered_mwh = energy_delivered_kwh / 1000
                 
                 # Calculate LCOE
                 lcoe_calculated = (annualized_cost / (energy_delivered_mwh * 1000)) if energy_delivered_mwh > 0 else 0
@@ -1513,4 +1519,5 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
