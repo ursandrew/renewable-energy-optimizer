@@ -1281,26 +1281,19 @@ with tab3:
                     # Calculate components
                     total_npc = results.get('npc', 0)
                     annualized_cost = total_npc * crf
-                    
-                    # Energy delivered (FIXED: Calculate from dispatch dataframe)
-                    if 'optimal_dispatch' in results:
-                        total_load_kwh = results['optimal_dispatch']['Load_kW'].sum()
-                        total_unmet_kwh = results['optimal_dispatch']['Unmet_kW'].sum()
-                        energy_delivered_kwh = total_load_kwh - total_unmet_kwh
-                        total_load_mwh = total_load_kwh / 1000
-                        energy_delivered_mwh = energy_delivered_kwh / 1000
-                        unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
-                    else:
-                        # Fallback to using optimal_row data
-                        total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
-                        total_unmet_kwh = optimal_row.get('Unmet_kWh', 0)  # ← ADDED THIS
-                        energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
-                        total_load_mwh = total_load_kwh / 1000
-                        energy_delivered_mwh = energy_delivered_kwh / 1000
-                        unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
+
+                    # CRITICAL: Use the EXACT energy value from optimization results
+                    # This is the value that was used to calculate the reported LCOE
+                    energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
+                    total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
+                    total_unmet_kwh = optimal_row.get('Unmet_kWh', 0)
     
-                    # Calculate LCOE
-                    lcoe_calculated = (annualized_cost / (energy_delivered_kwh)) if energy_delivered_kwh > 0 else 0
+                    energy_delivered_mwh = energy_delivered_kwh / 1000
+                    total_load_mwh = total_load_kwh / 1000
+                    unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
+    
+                    # Calculate LCOE using the SAME method as optimizer
+                    lcoe_calculated = (annualized_cost / energy_delivered_kwh) if energy_delivered_kwh > 0 else 0
                     lcoe_mwh = lcoe_calculated * 1000
     
                     col1, col2 = st.columns(2)
@@ -1316,7 +1309,10 @@ with tab3:
     
                     st.write(f"**Calculated LCOE:** ${lcoe_calculated:.4f}/kWh = ${lcoe_mwh:.2f}/MWh")
                     st.write(f"**Reported LCOE:** ${results.get('lcoe', 0):.2f}/MWh")
-    
+                    # Add debug info
+                    st.write("**DEBUG:**")
+                    st.write(f"Energy from optimal_row: {energy_delivered_kwh:,.0f} kWh")
+                    st.write(f"Annualized cost: ${annualized_cost:,.0f}/year")
                     # Check match
                     diff = abs(lcoe_mwh - results.get('lcoe', 0))
                     if diff < 1.0:
@@ -1525,6 +1521,7 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
 
 
