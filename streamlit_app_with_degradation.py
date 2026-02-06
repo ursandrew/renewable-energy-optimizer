@@ -1262,61 +1262,67 @@ with tab3:
                 inflation = config.get('inflation_rate', 0)
                 st.write(f"**Inflation Rate:** {inflation*100:.2f}%" if inflation < 1 else f"{inflation:.2f}%")
             
-            st.markdown("### LCOE Calculation Check")
-            st.write(f"**LCOE Formula:** Annualized Cost / Annual Energy Delivered")
-            st.write(f"**Method:** Industry Standard (HOMER Pro / NREL)")
-            
-            if 'electrical_metrics' in results:
-                em = results['electrical_metrics']
-                
-                # Get financial params
-                config = results.get('config_params', {})
-                discount_rate = config.get('discount_rate', 8.0) / 100 if config.get('discount_rate', 8.0) >= 1 else config.get('discount_rate', 0.08)
-                project_lifetime = config.get('project_lifetime', 25)
-                
-                # Calculate CRF
-                crf = discount_rate * (1 + discount_rate)**project_lifetime / ((1 + discount_rate)**project_lifetime - 1)
-                
-                # Calculate components
-                total_npc = results.get('npc', 0)
-                annualized_cost = total_npc * crf
-                # Energy delivered (not generation)
-                if 'optimal_dispatch' in results:
-                    total_load_kwh = results['optimal_dispatch']['Load_kW'].sum()
-                    total_unmet_kwh = results['optimal_dispatch']['Unmet_kW'].sum()
-                    energy_delivered_kwh = total_load_kwh - total_unmet_kwh
-                    energy_delivered_mwh = energy_delivered_kwh / 1000
-                else:
-                   # Fallback to using optimal_row data
-                    total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
-                    energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
-                    energy_delivered_mwh = energy_delivered_kwh / 1000
-                
-                # Calculate LCOE
-                lcoe_calculated = (annualized_cost / (energy_delivered_mwh * 1000)) if energy_delivered_mwh > 0 else 0
-                lcoe_mwh = lcoe_calculated * 1000
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Total NPC:** ${total_npc/1e6:.3f}M")
-                    st.write(f"**CRF:** {crf:.6f}")
-                    st.write(f"**Annualized Cost:** ${annualized_cost:,.0f}/year")
-                
-                with col2:
-                    st.write(f"**Total Load:** {total_load_mwh:,.0f} MWh/year")
-                    st.write(f"**Unmet Load:** {unmet_pct*100:.2f}%")
-                    st.write(f"**Energy Delivered:** {energy_delivered_mwh:,.0f} MWh/year")
-                
-                st.write(f"**Calculated LCOE:** ${lcoe_calculated:.4f}/kWh = ${lcoe_mwh:.2f}/MWh")
-                st.write(f"**Reported LCOE:** ${results.get('lcoe', 0):.2f}/MWh")
-                
-                # Check match
-                diff = abs(lcoe_mwh - results.get('lcoe', 0))
-                if diff < 1.0:
-                    st.success(f"✅ LCOE values match (difference: ${diff:.2f}/MWh)")
-                else:
-                    st.warning(f"⚠️ LCOE mismatch: ${diff:.2f}/MWh difference")
+
+                st.markdown("### LCOE Calculation Check")
+                st.write(f"**LCOE Formula:** Annualized Cost / Annual Energy Delivered")
+                st.write(f"**Method:** Industry Standard (HOMER Pro / NREL)")
+
+                if 'electrical_metrics' in results:
+                    em = results['electrical_metrics']
                     
+                    # Get financial params
+                    config = results.get('config_params', {})
+                    discount_rate = config.get('discount_rate', 8.0) / 100 if config.get('discount_rate', 8.0) >= 1 else config.get('discount_rate', 0.08)
+                    project_lifetime = config.get('project_lifetime', 25)
+                    
+                    # Calculate CRF
+                    crf = discount_rate * (1 + discount_rate)**project_lifetime / ((1 + discount_rate)**project_lifetime - 1)
+                    
+                    # Calculate components
+                    total_npc = results.get('npc', 0)
+                    annualized_cost = total_npc * crf
+                    
+                    # Energy delivered (FIXED: Calculate from dispatch dataframe)
+                    if 'optimal_dispatch' in results:
+                        total_load_kwh = results['optimal_dispatch']['Load_kW'].sum()
+                        total_unmet_kwh = results['optimal_dispatch']['Unmet_kW'].sum()
+                        energy_delivered_kwh = total_load_kwh - total_unmet_kwh
+                        energy_delivered_mwh = energy_delivered_kwh / 1000
+                        total_load_mwh = total_load_kwh / 1000  # Add this for display
+                    else:
+                        # Fallback to using optimal_row data
+                        total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
+                        energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
+                        energy_delivered_mwh = energy_delivered_kwh / 1000
+                        total_load_mwh = total_load_kwh / 1000  # Add this for display
+    
+                    # Calculate unmet percentage for display
+                    unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
+    
+                    # Calculate LCOE
+                    lcoe_calculated = (annualized_cost / (energy_delivered_kwh)) if energy_delivered_kwh > 0 else 0
+                    lcoe_mwh = lcoe_calculated * 1000
+    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"**Total NPC:** ${total_npc/1e6:.3f}M")
+                        st.write(f"**CRF:** {crf:.6f}")
+                        st.write(f"**Annualized Cost:** ${annualized_cost:,.0f}/year")
+    
+                    with col2:
+                        st.write(f"**Total Load:** {total_load_mwh:,.0f} MWh/year")
+                        st.write(f"**Unmet Load:** {unmet_pct:.2f}%")
+                        st.write(f"**Energy Delivered:** {energy_delivered_mwh:,.0f} MWh/year")
+    
+                    st.write(f"**Calculated LCOE:** ${lcoe_calculated:.4f}/kWh = ${lcoe_mwh:.2f}/MWh")
+                    st.write(f"**Reported LCOE:** ${results.get('lcoe', 0):.2f}/MWh")
+    
+                    # Check match
+                    diff = abs(lcoe_mwh - results.get('lcoe', 0))
+                    if diff < 1.0:
+                        st.success(f"✅ LCOE values match (difference: ${diff:.2f}/MWh)")
+                    else:
+                        st.warning(f"⚠️ LCOE mismatch: ${diff:.2f}/MWh difference")    
                 st.info("""
                 **LCOE Methodology:**
                 - Uses **Energy Delivered** (not PV generation)
@@ -1519,5 +1525,6 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
 
