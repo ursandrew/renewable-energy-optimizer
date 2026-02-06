@@ -1287,17 +1287,17 @@ with tab3:
                         total_load_kwh = results['optimal_dispatch']['Load_kW'].sum()
                         total_unmet_kwh = results['optimal_dispatch']['Unmet_kW'].sum()
                         energy_delivered_kwh = total_load_kwh - total_unmet_kwh
+                        total_load_mwh = total_load_kwh / 1000
                         energy_delivered_mwh = energy_delivered_kwh / 1000
-                        total_load_mwh = total_load_kwh / 1000  # Add this for display
+                        unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 
                     else:
                         # Fallback to using optimal_row data
                         total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
+                        total_unmet_kwh = optimal_row.get('Unmet_kWh', 0)  # ← ADDED THIS
                         energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
+                        total_load_mwh = total_load_kwh / 1000
                         energy_delivered_mwh = energy_delivered_kwh / 1000
-                        total_load_mwh = total_load_kwh / 1000  # Add this for display
-    
-                    # Calculate unmet percentage for display
-                    unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
+                        unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
     
                     # Calculate LCOE
                     lcoe_calculated = (annualized_cost / (energy_delivered_kwh)) if energy_delivered_kwh > 0 else 0
@@ -1525,6 +1525,7 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
 
 
