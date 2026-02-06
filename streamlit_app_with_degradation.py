@@ -1448,7 +1448,7 @@ with tab3:
                 type="primary"
             )
     # ===== DEGRADATION RESULTS =====
-  if apply_degradation and DEGRADATION_AVAILABLE:
+    if apply_degradation and DEGRADATION_AVAILABLE:
        st.markdown("---")
        st.subheader("🔬 Degradation Analysis (25 Years)")
     
