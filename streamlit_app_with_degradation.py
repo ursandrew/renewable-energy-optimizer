@@ -1289,7 +1289,7 @@ with tab3:
                         energy_delivered_kwh = total_load_kwh - total_unmet_kwh
                         total_load_mwh = total_load_kwh / 1000
                         energy_delivered_mwh = energy_delivered_kwh / 1000
-                        unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 
+                        unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
                     else:
                         # Fallback to using optimal_row data
                         total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
@@ -1525,6 +1525,7 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
 
 
