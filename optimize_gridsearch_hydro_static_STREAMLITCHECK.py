@@ -731,10 +731,20 @@ def calculate_npc_homer_style(pv_capacity, wind_capacity, hydro_capacity, bess_p
     # Calculate Levelized Cost of Energy (LCOE) - Uses LIFETIME energy
     total_energy_lifetime = total_energy_served_annual * project_lifetime
     
-    if total_energy_lifetime > 0:
-        lcoe = total_npc / total_energy_lifetime  # $/kWh over project lifetime
-    else:
-        lcoe = 0
+   # Calculate Levelized Cost of Energy (LCOE) - INDUSTRY STANDARD METHOD
+   # LCOE = Annualized Cost / Annual Energy Delivered
+   # This matches HOMER Pro, NREL, and IEA methodology
+   
+   if total_energy_served_annual > 0:
+       # Use annualized cost divided by annual energy
+       # This is the industry-standard method used by:
+       # - HOMER Pro
+       # - NREL Annual Technology Baseline
+       # - IEA World Energy Outlook
+       # - Lazard's LCOE Analysis
+       lcoe = total_annualized / total_energy_served_annual  # $/kWh per year
+   else:
+       lcoe = 0
     
     system_crf = calculate_crf(real_discount_rate, project_lifetime)
     
@@ -1576,4 +1586,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
