@@ -735,7 +735,7 @@ def calculate_npc_homer_style(pv_capacity, wind_capacity, hydro_capacity, bess_p
    # LCOE = Annualized Cost / Annual Energy Delivered
    # This matches HOMER Pro, NREL, and IEA methodology
    
-   if total_energy_served_annual > 0:
+    if total_energy_served_annual > 0:
        # Use annualized cost divided by annual energy
        # This is the industry-standard method used by:
        # - HOMER Pro
@@ -743,7 +743,7 @@ def calculate_npc_homer_style(pv_capacity, wind_capacity, hydro_capacity, bess_p
        # - IEA World Energy Outlook
        # - Lazard's LCOE Analysis
        lcoe = total_annualized / total_energy_served_annual  # $/kWh per year
-   else:
+    else:
        lcoe = 0
     
     system_crf = calculate_crf(real_discount_rate, project_lifetime)
@@ -1586,5 +1586,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
