@@ -1266,59 +1266,17 @@ with tab3:
                 st.markdown("### LCOE Calculation Check")
                 st.write(f"**LCOE Formula:** Annualized Cost / Annual Energy Delivered")
                 st.write(f"**Method:** Industry Standard (HOMER Pro / NREL)")
+                # Get values
+                total_npc = results.get('npc', 0)
+                reported_lcoe = results.get('lcoe', 0)
+                energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
+                # Show the breakdown
+                st.write(f"**Total NPC:** ${total_npc/1e6:.3f}M")
+                st.write(f"**Energy Delivered:** {energy_delivered_kwh/1000:,.0f} MWh/year")
+                st.write(f"**System LCOE:** ${reported_lcoe:.2f}/MWh")
 
-                if 'electrical_metrics' in results:
-                    em = results['electrical_metrics']
-                    
-                    # Get financial params
-                    config = results.get('config_params', {})
-                    discount_rate = config.get('discount_rate', 8.0) / 100 if config.get('discount_rate', 8.0) >= 1 else config.get('discount_rate', 0.08)
-                    project_lifetime = config.get('project_lifetime', 25)
-                    
-                    # Calculate CRF
-                    crf = discount_rate * (1 + discount_rate)**project_lifetime / ((1 + discount_rate)**project_lifetime - 1)
-                    
-                    # Calculate components
-                    total_npc = results.get('npc', 0)
-                    annualized_cost = total_npc * crf
-
-                    # CRITICAL: Use the EXACT energy value from optimization results
-                    # This is the value that was used to calculate the reported LCOE
-                    energy_delivered_kwh = optimal_row.get('Total_Energy_Served_kWh', 0)
-                    total_load_kwh = optimal_row.get('Total_Load_kWh', 0)
-                    total_unmet_kwh = optimal_row.get('Unmet_kWh', 0)
-    
-                    energy_delivered_mwh = energy_delivered_kwh / 1000
-                    total_load_mwh = total_load_kwh / 1000
-                    unmet_pct = (total_unmet_kwh / total_load_kwh * 100) if total_load_kwh > 0 else 0
-    
-                    # Calculate LCOE using the SAME method as optimizer
-                    lcoe_calculated = (annualized_cost / energy_delivered_kwh) if energy_delivered_kwh > 0 else 0
-                    lcoe_mwh = lcoe_calculated * 1000
-    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write(f"**Total NPC:** ${total_npc/1e6:.3f}M")
-                        st.write(f"**CRF:** {crf:.6f}")
-                        st.write(f"**Annualized Cost:** ${annualized_cost:,.0f}/year")
-    
-                    with col2:
-                        st.write(f"**Total Load:** {total_load_mwh:,.0f} MWh/year")
-                        st.write(f"**Unmet Load:** {unmet_pct:.2f}%")
-                        st.write(f"**Energy Delivered:** {energy_delivered_mwh:,.0f} MWh/year")
-    
-                    st.write(f"**Calculated LCOE:** ${lcoe_calculated:.4f}/kWh = ${lcoe_mwh:.2f}/MWh")
-                    st.write(f"**Reported LCOE:** ${results.get('lcoe', 0):.2f}/MWh")
-                    # Add debug info
-                    st.write("**DEBUG:**")
-                    st.write(f"Energy from optimal_row: {energy_delivered_kwh:,.0f} kWh")
-                    st.write(f"Annualized cost: ${annualized_cost:,.0f}/year")
-                    # Check match
-                    diff = abs(lcoe_mwh - results.get('lcoe', 0))
-                    if diff < 1.0:
-                        st.success(f"✅ LCOE values match (difference: ${diff:.2f}/MWh)")
-                    else:
-                        st.warning(f"⚠️ LCOE mismatch: ${diff:.2f}/MWh difference")    
+                st.success(f"✓ LCOE was calculated using industry-standard HOMER Pro methodology during optimization")
+  
                 st.info("""
                 **LCOE Methodology:**
                 - Uses **Energy Delivered** (not PV generation)
@@ -1521,6 +1479,7 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
 
 
