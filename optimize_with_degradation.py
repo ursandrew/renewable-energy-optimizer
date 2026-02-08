@@ -4,40 +4,11 @@ DEGRADATION ANALYSIS MODULE FOR STREAMLIT
 Full degradation engine for PV + BESS systems with grid search optimization
 
 Author: SJ
-Version: 2.0 - Streamlit Compatible
+Version: 2.1 - Streamlit Compatible (Fixed Imports)
 """
 
-# ==============================================================================
-# IMPORTS
-# ==============================================================================
-
-import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-from datetime import datetime
-import os
-from io import BytesIO
-
-# Import optimization code
-try:
-    import optimize_gridsearch_hydro_static_STREAMLITCHECK as opt_module
-    OPTIMIZATION_AVAILABLE = True
-except ImportError:
-    OPTIMIZATION_AVAILABLE = False
-    st.error("Optimization module not found")
-
-# Import degradation analysis
-DEGRADATION_AVAILABLE = False
-try:
-    import optimize_with_degradation as deg_module
-    DEGRADATION_AVAILABLE = True
-except ImportError:
-    pass
-except Exception as e:
-    print(f"Warning: Degradation module not available - {e}")
 
 # ==============================================================================
 # OEM DEGRADATION DATA
@@ -59,6 +30,50 @@ INPUT_FILE = None
 
 
 # ==============================================================================
+# IMPORT BASE OPTIMIZATION FUNCTIONS
+# ==============================================================================
+
+def read_inputs():
+    """Wrapper for base module read_inputs."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.read_inputs()
+
+
+def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
+                                  pv_kw, wind_kw, hydro_kw, bess_power_kw, bess_capacity_kwh,
+                                  solar, wind, hydro, bess, hydro_start, hydro_end):
+    """Wrapper for base module calculate_dispatch_with_hydro."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.calculate_dispatch_with_hydro(
+        load_profile, pvsyst_profile, wind_profile,
+        pv_kw, wind_kw, hydro_kw, bess_power_kw, bess_capacity_kwh,
+        solar, wind, hydro, bess, hydro_start, hydro_end
+    )
+
+
+def calculate_npc_homer_style(*args, **kwargs):
+    """Wrapper for base module calculate_npc_homer_style."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.calculate_npc_homer_style(*args, **kwargs)
+
+
+def calculate_electrical_metrics(dispatch_df, component_capacities, component_configs,
+                                 npc_breakdown, project_lifetime):
+    """Wrapper for base module calculate_electrical_metrics."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.calculate_electrical_metrics(
+        dispatch_df, component_capacities, component_configs,
+        npc_breakdown, project_lifetime
+    )
+
+
+def find_optimal_solution(results_df):
+    """Wrapper for base module find_optimal_solution."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.find_optimal_solution(results_df)
+
+
+# ==============================================================================
 # GRID SEARCH OPTIMIZATION WITH DEGRADATION
 # ==============================================================================
 
@@ -71,14 +86,11 @@ def grid_search_optimize_hydro(config, grid_config, solar, wind, hydro, bess,
     Degradation is applied in post-processing via run_degradation_analysis().
     """
     
-    if not BASE_MODULE_AVAILABLE:
-        raise ImportError("Base optimization module not available")
-    
-    # Import the grid search function
-    from optimize_gridsearch_hydro_static_STREAMLITCHECK import grid_search_optimize_hydro as base_grid_search
+    # Import and call base optimization
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
     
     # Call base optimization (no degradation during optimization)
-    results_df = base_grid_search(
+    results_df = base_module.grid_search_optimize_hydro(
         config, grid_config, solar, wind, hydro, bess,
         load_profile, pvsyst_profile, wind_profile, hydro_profile
     )
@@ -206,26 +218,3 @@ def run_degradation_analysis(optimal_row, config_params, apply_pv=True, apply_be
             'bess': apply_bess
         }
     }
-
-
-# ==============================================================================
-# WRAPPER FUNCTIONS (for compatibility)
-# ==============================================================================
-
-# Make sure all base functions are available as exports
-__all__ = [
-    'grid_search_optimize_hydro',
-    'run_degradation_analysis',
-    'read_inputs',
-    'calculate_dispatch_with_hydro',
-    'calculate_npc_homer_style',
-    'calculate_electrical_metrics',
-    'find_optimal_solution',
-    'PV_DEG',
-    'BESS_CAP_RET'
-]
-
-
-
-
-
