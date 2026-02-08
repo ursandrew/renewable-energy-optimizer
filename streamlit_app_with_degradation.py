@@ -1,16 +1,11 @@
 """
-RENEWABLE ENERGY OPTIMIZATION TOOL - COMPLETE VERSION V3.2
-===========================================================
-Features:
-- Component enable/disable toggles (PV, Wind, Hydro, BESS, CCGT, Hydrogen)
-- Degradation analysis moved to Optimization Settings
-- Emissions calculation option
-- Load type selection (Residential/Commercial/Industrial/Community)
-- Fixed cash flow chart
-- Energy mix pie chart
-- Single representative day profile
-- Sungrow BESS deployment metrics
-- LCOE/LCOS calculation from NPC
+RENEWABLE ENERGY OPTIMIZATION TOOL - POLISHED UI V3.3
+======================================================
+UI Improvements:
+- Degradation checkboxes moved into component tabs
+- Profile uploads integrated into component tabs
+- Independent PV/BESS degradation selection
+- Cleaner, more intuitive sidebar organization
 """
 
 import streamlit as st
@@ -631,7 +626,7 @@ def create_energy_mix_pie_chart(optimal_row):
 
 
 # ==============================================================================
-# EMISSIONS TABLE (NEW)
+# EMISSIONS TABLE
 # ==============================================================================
 
 def create_emissions_table(optimal_row, results):
@@ -693,7 +688,9 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Solar PV
+    # ==============================================================================
+    # SOLAR PV - WITH DEGRADATION CHECKBOX AND PROFILE UPLOAD
+    # ==============================================================================
     with st.expander("☀️ SOLAR PV", expanded=enable_pv):
         if not enable_pv:
             st.warning("⚠️ Solar PV is DISABLED")
@@ -703,6 +700,8 @@ with st.sidebar:
             pv_capex = 1000
             pv_opex = 10
             pv_lifetime = 25
+            pv_file = None
+            apply_pv_degradation = False
         else:
             st.subheader("Capacity Range")
             col1, col2 = st.columns(2)
@@ -719,8 +718,33 @@ with st.sidebar:
                 pv_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="pv_opex")
             with col2:
                 pv_lifetime = st.number_input("Lifetime (years)", value=25, step=1, key="pv_life")
+            
+            # DEGRADATION CHECKBOX (IN COMPONENT TAB)
+            st.markdown("---")
+            apply_pv_degradation = st.checkbox(
+                "🔬 Apply PV Degradation Analysis",
+                value=False,
+                help="Enable 25-year PV degradation modeling (~9.8% total degradation)",
+                key="apply_pv_degradation"
+            )
+            if apply_pv_degradation:
+                st.info("✓ PV Degradation: ~9.8% over 25 years")
+            
+            # PROFILE UPLOAD (IN COMPONENT TAB)
+            st.markdown("---")
+            st.subheader("📊 PV Profile Upload")
+            pv_file = st.file_uploader(
+                "Upload PV Generation Profile (1 kW baseline)",
+                type=['csv', 'xlsx'],
+                key="pv_file",
+                help="Hourly PV generation profile (8760 hours)"
+            )
+            if pv_file:
+                st.success(f"✓ Uploaded: {pv_file.name}")
     
-    # Wind
+    # ==============================================================================
+    # WIND - WITH PROFILE UPLOAD
+    # ==============================================================================
     with st.expander("💨 WIND"):
         if not enable_wind:
             st.warning("⚠️ Wind is DISABLED")
@@ -730,6 +754,7 @@ with st.sidebar:
             wind_capex = 1200
             wind_opex = 15
             wind_lifetime = 20
+            wind_file = None
         else:
             st.subheader("Capacity Range")
             col1, col2 = st.columns(2)
@@ -746,8 +771,22 @@ with st.sidebar:
                 wind_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="wind_opex")
             with col2:
                 wind_lifetime = st.number_input("Lifetime (years)", value=20, step=1, key="wind_life")
+            
+            # PROFILE UPLOAD (IN COMPONENT TAB)
+            st.markdown("---")
+            st.subheader("📊 Wind Profile Upload")
+            wind_file = st.file_uploader(
+                "Upload Wind Generation Profile (1 kW baseline)",
+                type=['csv', 'xlsx'],
+                key="wind_file",
+                help="Hourly wind generation profile (8760 hours)"
+            )
+            if wind_file:
+                st.success(f"✓ Uploaded: {wind_file.name}")
     
-    # Hydro
+    # ==============================================================================
+    # HYDRO - WITH PROFILE UPLOAD
+    # ==============================================================================
     with st.expander("💧 HYDRO"):
         if not enable_hydro:
             st.warning("⚠️ Hydro is DISABLED")
@@ -758,6 +797,7 @@ with st.sidebar:
             hydro_capex = 2000
             hydro_opex = 20
             hydro_lifetime = 50
+            hydro_file = None
         else:
             st.subheader("Capacity Range")
             col1, col2 = st.columns(2)
@@ -777,8 +817,22 @@ with st.sidebar:
                 hydro_opex = st.number_input("OpEx ($/kW/yr)", value=20, step=1, key="hydro_opex")
             with col2:
                 hydro_lifetime = st.number_input("Lifetime (years)", value=50, step=1, key="hydro_life")
+            
+            # PROFILE UPLOAD (IN COMPONENT TAB) - OPTIONAL
+            st.markdown("---")
+            st.subheader("📊 Hydro Profile Upload (Optional)")
+            hydro_file = st.file_uploader(
+                "Upload Hydro Availability Profile (optional)",
+                type=['csv', 'xlsx'],
+                key="hydro_file",
+                help="Hourly hydro availability profile (8760 hours). If not provided, uses uniform availability."
+            )
+            if hydro_file:
+                st.success(f"✓ Uploaded: {hydro_file.name}")
     
-    # BESS
+    # ==============================================================================
+    # BESS - WITH DEGRADATION CHECKBOX
+    # ==============================================================================
     with st.expander("🔋 BATTERY STORAGE"):
         if not enable_bess:
             st.warning("⚠️ BESS is DISABLED")
@@ -794,6 +848,7 @@ with st.sidebar:
             bess_power_capex = 300
             bess_energy_capex = 200
             bess_opex = 2
+            apply_bess_degradation = False
         else:
             st.subheader("Power Range")
             col1, col2 = st.columns(2)
@@ -821,65 +876,43 @@ with st.sidebar:
                 bess_energy_capex = st.number_input("Energy CapEx ($/kWh)", value=200, step=10, key="bess_energy_capex")
             with col2:
                 bess_opex = st.number_input("OpEx ($/kW/yr)", value=2, step=1, key="bess_opex")
+            
+            # DEGRADATION CHECKBOX (IN COMPONENT TAB)
+            st.markdown("---")
+            apply_bess_degradation = st.checkbox(
+                "🔬 Apply BESS Degradation Analysis",
+                value=False,
+                help="Enable 25-year BESS degradation modeling with replacement at year 21",
+                key="apply_bess_degradation"
+            )
+            if apply_bess_degradation:
+                st.info("✓ BESS Degradation: ~31% loss by year 20, replacement at year 21")
     
+    # ==============================================================================
     # CCGT (Placeholder)
+    # ==============================================================================
     with st.expander("🔥 CCGT (Coming Soon)", expanded=False):
         st.info("⚠️ Combined Cycle Gas Turbine module will be available in a future release")
         ccgt_min = 0.0
         ccgt_max = 0.0
         ccgt_step = 1.0
     
-    # Hydrogen (Placeholder)
+    # ==============================================================================
+    # HYDROGEN (Placeholder)
+    # ==============================================================================
     with st.expander("⚗️ HYDROGEN (Coming Soon)", expanded=False):
         st.info("⚠️ Hydrogen production and storage module will be available in a future release")
         hydrogen_min = 0.0
         hydrogen_max = 0.0
         hydrogen_step = 1.0
     
-    # Financial Parameters
-    with st.expander("💰 FINANCIAL PARAMETERS"):
-        discount_rate = st.number_input("Discount Rate (%)", value=8.0, min_value=0.0, max_value=20.0, step=0.5)
-        inflation_rate = st.number_input("Inflation Rate (%)", value=2.0, min_value=0.0, max_value=10.0, step=0.5)
-        project_lifetime = st.number_input("Project Lifetime (years)", value=25, min_value=1, max_value=50, step=1)
-    
-    # NEW: Emissions Settings
-    with st.expander("🌍 EMISSIONS SETTINGS"):
-        calculate_emissions = st.checkbox(
-            "Calculate Emissions",
-            value=False,
-            help="Enable to calculate and display emissions (CO2, NOx, etc.) in results"
-        )
-        if calculate_emissions:
-            st.info("📊 Emissions table will be displayed in Results tab")
-    
-    # Optimization Settings (MOVED: Degradation Analysis here)
-    with st.expander("🎯 OPTIMIZATION SETTINGS"):
-        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=50.0, step=0.1, key="target_unmet")
-        
-        st.markdown("---")
-        st.markdown("**Advanced Options:**")
-        
-        # MOVED HERE: Degradation Analysis
-        apply_degradation = st.checkbox(
-            "🔬 Apply Degradation Analysis",
-            value=False,
-            help="25-year PV + BESS degradation with replacement. Wind and Hydro will be disabled.",
-            key="apply_degradation"
-        )
-        
-        if apply_degradation:
-            st.info("""
-            **Degradation Applied:**
-            - PV: ~9.8% over 25 years
-            - BESS: ~31% loss by year 20
-            - BESS replaced at year 21
-            - Wind & Hydro disabled
-            """)
-    
-    # NEW: Load Type Selection + File Uploads
+    # ==============================================================================
+    # LOAD PROFILE SETUP
+    # ==============================================================================
+    st.markdown("---")
     st.header("📁 Load Profile Setup")
     
-    # Load Type Dropdown (similar to HOMER)
+    # Load Type Dropdown
     load_type = st.selectbox(
         "Load Type",
         options=["Select Load Type", "Residential", "Commercial", "Industrial", "Community"],
@@ -893,32 +926,40 @@ with st.sidebar:
             f"📊 Upload {load_type} Load Profile",
             type=['csv', 'xlsx'],
             key="load_file",
-            help=f"Upload hourly load profile for {load_type} application"
+            help=f"Upload hourly load profile for {load_type} application (8760 hours)"
         )
+        if load_file:
+            st.success(f"✓ Uploaded: {load_file.name}")
     else:
         load_file = None
         st.caption("⚠️ Please select a load type first")
     
+    # ==============================================================================
+    # FINANCIAL PARAMETERS
+    # ==============================================================================
     st.markdown("---")
-    st.subheader("📂 Component Profiles")
+    with st.expander("💰 FINANCIAL PARAMETERS"):
+        discount_rate = st.number_input("Discount Rate (%)", value=8.0, min_value=0.0, max_value=20.0, step=0.5)
+        inflation_rate = st.number_input("Inflation Rate (%)", value=2.0, min_value=0.0, max_value=10.0, step=0.5)
+        project_lifetime = st.number_input("Project Lifetime (years)", value=25, min_value=1, max_value=50, step=1)
     
-    if enable_pv:
-        pv_file = st.file_uploader("☀️ PV Profile (1 kW)", type=['csv', 'xlsx'], key="pv_file")
-    else:
-        pv_file = None
-        st.caption("⚠️ PV profile not required (PV disabled)")
+    # ==============================================================================
+    # EMISSIONS SETTINGS
+    # ==============================================================================
+    with st.expander("🌍 EMISSIONS SETTINGS"):
+        calculate_emissions = st.checkbox(
+            "Calculate Emissions",
+            value=False,
+            help="Enable to calculate and display emissions (CO2, NOx, etc.) in results"
+        )
+        if calculate_emissions:
+            st.info("📊 Emissions table will be displayed in Results tab")
     
-    if enable_wind:
-        wind_file = st.file_uploader("💨 Wind Profile (1 kW)", type=['csv', 'xlsx'], key="wind_file")
-    else:
-        wind_file = None
-        st.caption("⚠️ Wind profile not required (Wind disabled)")
-    
-    if enable_hydro:
-        hydro_file = st.file_uploader("💧 Hydro Profile (Optional)", type=['csv', 'xlsx'], key="hydro_file")
-    else:
-        hydro_file = None
-        st.caption("⚠️ Hydro profile not required (Hydro disabled)")
+    # ==============================================================================
+    # OPTIMIZATION SETTINGS
+    # ==============================================================================
+    with st.expander("🎯 OPTIMIZATION SETTINGS"):
+        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=50.0, step=0.1, key="target_unmet")
 
 # ========== MAIN TABS ==========
 tab1, tab2, tab3 = st.tabs(["🏠 Home", "⚙️ Optimize", "📊 Results"])
@@ -958,6 +999,16 @@ with tab1:
     
     if len(active_components) > 0:
         st.success(f"**Enabled Components:** {' + '.join(active_components)}")
+    
+    # Show degradation status
+    degradation_status = []
+    if apply_pv_degradation:
+        degradation_status.append("☀️ PV Degradation")
+    if apply_bess_degradation:
+        degradation_status.append("🔋 BESS Degradation")
+    
+    if len(degradation_status) > 0:
+        st.info(f"**Degradation Analysis:** {' + '.join(degradation_status)}")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -1043,6 +1094,13 @@ with tab2:
                 st.subheader("🔄 Optimization in Progress...")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
+                
+                # Check if degradation analysis should be used
+                use_degradation = apply_pv_degradation or apply_bess_degradation
+                
+                if use_degradation and not DEGRADATION_AVAILABLE:
+                    st.error("❌ Degradation analysis module not available")
+                    st.stop()
                 
                 # Read profiles
                 status_text.text("📊 Reading profiles...")
@@ -1133,26 +1191,51 @@ with tab2:
                 status_text.text("⚙️ Running optimization...")
                 progress_bar.progress(30)
                 
-                opt_module.INPUT_FILE = temp_file
-                result = opt_module.read_inputs()
-                
-                if len(result) == 9:
-                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
+                # Choose which optimization module to use
+                if use_degradation:
+                    st.info(f"🔬 Using degradation analysis (PV: {apply_pv_degradation}, BESS: {apply_bess_degradation})")
+                    # Use degradation module
+                    deg_module.INPUT_FILE = temp_file
+                    result = deg_module.read_inputs()
+                    
+                    if len(result) == 9:
+                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
+                    else:
+                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
+                    
+                    results_df = deg_module.grid_search_optimize_hydro(
+                        config, grid_config, solar, wind, hydro, bess,
+                        load_profile, pvsyst_profile, wind_profile, None
+                    )
+                    
+                    progress_bar.progress(85)
+                    optimal = deg_module.find_optimal_solution(results_df)
+                    
                 else:
-                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
+                    # Use standard module
+                    opt_module.INPUT_FILE = temp_file
+                    result = opt_module.read_inputs()
+                    
+                    if len(result) == 9:
+                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
+                    else:
+                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
+                    
+                    results_df = opt_module.grid_search_optimize_hydro(
+                        config, grid_config, solar, wind, hydro, bess,
+                        load_profile, pvsyst_profile, wind_profile, None
+                    )
+                    
+                    progress_bar.progress(85)
+                    optimal = opt_module.find_optimal_solution(results_df)
                 
-                results_df = opt_module.grid_search_optimize_hydro(
-                    config, grid_config, solar, wind, hydro, bess,
-                    load_profile, pvsyst_profile, wind_profile, None
-                )
-                
-                progress_bar.progress(85)
-                optimal = opt_module.find_optimal_solution(results_df)
                 progress_bar.progress(90)
                 
                 if optimal is not None:
                     # Calculate electrical metrics
-                    optimal_dispatch = opt_module.calculate_dispatch_with_hydro(
+                    module = deg_module if use_degradation else opt_module
+                    
+                    optimal_dispatch = module.calculate_dispatch_with_hydro(
                         load_profile, pvsyst_profile, wind_profile,
                         optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
                         optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
@@ -1184,7 +1267,7 @@ with tab2:
                         'bess': {'npc': optimal.get('BESS_NPC_$', 0)}
                     }
                     
-                    electrical_metrics = opt_module.calculate_electrical_metrics(
+                    electrical_metrics = module.calculate_electrical_metrics(
                         optimal_dispatch, component_capacities, component_configs,
                         npc_breakdown, project_lifetime
                     )
@@ -1217,7 +1300,11 @@ with tab2:
                             'target_unmet_percent': target_unmet_percent
                         },
                         'load_type': load_type,
-                        'calculate_emissions': calculate_emissions
+                        'calculate_emissions': calculate_emissions,
+                        'degradation_settings': {
+                            'pv': apply_pv_degradation,
+                            'bess': apply_bess_degradation
+                        }
                     }
                     
                     st.session_state.optimization_complete = True
@@ -1240,6 +1327,17 @@ with tab3:
         
         results = st.session_state.results
         optimal_row = results.get('optimal_row', {})
+        
+        # Show degradation status if applied
+        if 'degradation_settings' in results:
+            deg_settings = results['degradation_settings']
+            if deg_settings['pv'] or deg_settings['bess']:
+                deg_status = []
+                if deg_settings['pv']:
+                    deg_status.append("☀️ PV")
+                if deg_settings['bess']:
+                    deg_status.append("🔋 BESS")
+                st.info(f"🔬 **Degradation Analysis Applied:** {' + '.join(deg_status)}")
         
         # Key Metrics
         col1, col2, col3 = st.columns(3)
@@ -1308,7 +1406,7 @@ with tab3:
         
         st.markdown("---")
         
-        # NEW: Emissions Table (if enabled)
+        # Emissions Table (if enabled)
         if results.get('calculate_emissions', False):
             st.subheader("🌍 Emissions Summary")
             emissions_table = create_emissions_table(optimal_row, results)
@@ -1392,4 +1490,4 @@ with tab3:
 
 # Footer
 st.markdown("---")
-st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.2 | Professional NPC Analysis + Emissions</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.3 | Polished UI with Integrated Controls</p></div>', unsafe_allow_html=True)
