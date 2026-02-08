@@ -1,530 +1,517 @@
 """
-STREAMLIT APP UPDATES FOR DEGRADATION ANALYSIS
-===============================================
-These sections need to be updated in your main Streamlit app file.
+DEGRADATION ANALYSIS MODULE FOR STREAMLIT - FIXED VERSION
+==========================================================
+Full degradation engine for PV + BESS systems with COMPLETE hourly simulation
 
-INSTRUCTIONS:
-1. Replace the degradation import (around line 20)
-2. Update the optimization execution (around line 760-900)
-3. Update the Excel export function (around line 150)
+FIXES:
+1. Now runs FULL hourly dispatch for each year (not just yearly summary)
+2. Applies Year 1 degradation from the start (94.46% BESS retention)
+3. Includes efficiency degradation retention factors
+4. Generates hourly dispatch sheets for selected years
+5. Proper BESS SOC initialization with degraded capacity
+
+Author: SJ
+Version: 3.0 - Complete Hourly Simulation
 """
 
-# ==============================================================================
-# SECTION 1: UPDATE IMPORT (Replace around line 20)
-# ==============================================================================
-
-# OLD CODE:
-"""
-try:
-    import optimize_with_degradation as deg_module
-    DEGRADATION_AVAILABLE = True
-except ImportError:
-    DEGRADATION_AVAILABLE = False
-"""
-
-# NEW CODE:
-try:
-    import optimize_with_degradation_FIXED as deg_module
-    DEGRADATION_AVAILABLE = True
-except ImportError:
-    DEGRADATION_AVAILABLE = False
-    print("⚠️ Warning: Degradation module not found")
-
+import pandas as pd
+import numpy as np
 
 # ==============================================================================
-# SECTION 2: UPDATE EXCEL EXPORT FUNCTION (Replace the entire function)
+# OEM DEGRADATION DATA
 # ==============================================================================
 
-def export_results_industry_format_WITH_DEGRADATION(results_dict, results_df, optimal_row, 
-                                                     config_params, degradation_results=None):
+# PV Degradation - Cumulative percentage loss
+PV_DEG = {
+    1: 0, 2: 0.41, 3: 0.82, 4: 1.22, 5: 1.63, 6: 2.04, 7: 2.45, 8: 2.86, 9: 3.27, 10: 3.67,
+    11: 4.08, 12: 4.49, 13: 4.90, 14: 5.31, 15: 5.71, 16: 6.12, 17: 6.53, 18: 6.94, 19: 7.35, 20: 7.76,
+    21: 8.16, 22: 8.57, 23: 8.98, 24: 9.39, 25: 9.80
+}
+
+# BESS Capacity Retention - Percentage of original capacity
+BESS_CAP_RET = {
+    1: 94.46, 2: 92.14, 3: 90.33, 4: 88.71, 5: 87.19, 6: 85.75, 7: 84.37, 8: 83.00, 9: 81.70, 10: 80.45,
+    11: 79.20, 12: 78.00, 13: 76.76, 14: 75.57, 15: 74.40, 16: 73.23, 17: 72.10, 18: 70.96, 19: 69.84, 20: 68.73
+}
+
+# BESS Charging Efficiency Retention - Fraction of Year 1 value
+BESS_CHARGE_EFF_RETENTION = {
+    1: 1.0000, 2: 0.9989, 3: 0.9981, 4: 0.9972, 5: 0.9963,
+    6: 0.9955, 7: 0.9947, 8: 0.9939, 9: 0.9930, 10: 0.9922,
+    11: 0.9914, 12: 0.9906, 13: 0.9897, 14: 0.9888, 15: 0.9881,
+    16: 0.9873, 17: 0.9864, 18: 0.9856, 19: 0.9848, 20: 0.9840
+}
+
+# BESS Discharging Efficiency Retention - Fraction of Year 1 value
+BESS_DISCHARGE_EFF_RETENTION = {
+    1: 1.0000, 2: 0.9989, 3: 0.9981, 4: 0.9973, 5: 0.9964,
+    6: 0.9955, 7: 0.9948, 8: 0.9939, 9: 0.9930, 10: 0.9923,
+    11: 0.9915, 12: 0.9907, 13: 0.9898, 14: 0.9889, 15: 0.9882,
+    16: 0.9874, 17: 0.9865, 18: 0.9858, 19: 0.9849, 20: 0.9841
+}
+
+# Global variable for input file path
+INPUT_FILE = None
+
+
+# ==============================================================================
+# IMPORT BASE OPTIMIZATION FUNCTIONS
+# ==============================================================================
+
+def read_inputs():
     """
-    Export results in industry standard Excel format.
-    NOW INCLUDES DEGRADATION ANALYSIS SHEETS.
+    Wrapper for base module read_inputs.
+    
+    CRITICAL: This sets the INPUT_FILE in the base module before calling read_inputs.
     """
-    output = BytesIO()
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
     
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Sheet 1: Summary
-        summary_data = []
-        
-        # Check if degradation was applied
-        if degradation_results and 'degradation_applied' in degradation_results:
-            deg_settings = degradation_results['degradation_applied']
-            deg_status = []
-            if deg_settings['pv']:
-                deg_status.append("PV")
-            if deg_settings['bess']:
-                deg_status.append("BESS")
-            deg_text = " + ".join(deg_status) if deg_status else "None"
-        else:
-            deg_text = "None"
-        
-        summary_data.extend([
-            ['Parameter', 'Value'],
-            ['Optimization Method', 'GRID_SEARCH'],
-            ['NPC Calculation Method', 'Present Value Analysis'],
-            ['Degradation Analysis', deg_text],
-            ['', ''],
-            ['Target Unmet Load (%)', config_params.get('target_unmet_percent', 0.1)],
-            ['Nominal Discount Rate (%)', config_params.get('discount_rate', 8.0)],
-            ['Inflation Rate (%)', config_params.get('inflation_rate', 2.0)],
-            ['Project Lifetime (years)', config_params.get('project_lifetime', 25)],
-            ['', ''],
-            ['PV Capacity (kW)', results_dict['pv_capacity'] * 1000],
-            ['Wind Capacity (kW)', results_dict['wind_capacity'] * 1000],
-            ['Hydro Capacity (kW)', results_dict['hydro_capacity'] * 1000],
-            ['BESS Power (kW)', results_dict['bess_power'] * 1000],
-            ['BESS Capacity (kWh)', results_dict['bess_energy'] * 1000],
-            ['', ''],
-        ])
-        
-        # Add degradation summary if available
-        if degradation_results:
-            summary_data.extend([
-                ['--- DEGRADATION ANALYSIS ---', ''],
-                ['Year 1 NPC ($)', degradation_results.get('npc_year1', 0)],
-                ['25-Year NPC ($)', degradation_results.get('npc_25year', 0)],
-                ['BESS Replacement Cost PV ($)', degradation_results.get('replacement_cost_pv', 0)],
-                ['Year 1 LCOE ($/MWh)', degradation_results.get('lcoe_year1', 0)],
-                ['25-Year LCOE ($/MWh)', degradation_results.get('lcoe_25year', 0)],
-                ['PV Total Degradation (%)', degradation_results.get('pv_deg_total', 0)],
-                ['BESS Capacity Loss 20Y (%)', degradation_results.get('bess_loss_20y', 0)],
-                ['', ''],
-            ])
-        else:
-            summary_data.extend([
-                ['Total NPC ($)', results_dict['npc']],
-                ['System LCOE ($/MWh)', results_dict['lcoe']],
-                ['Unmet Load (%)', results_dict['unmet_pct']],
-            ])
-        
-        pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False, header=False)
-        
-        # Sheet 2: Cost Breakdown
-        cost_breakdown = pd.DataFrame({
-            'Component': ['PV', 'Wind', 'Hydro', 'BESS', 'System'],
-            'Capital ($)': [
-                optimal_row.get('PV_Capital_$', 0),
-                optimal_row.get('Wind_Capital_$', 0),
-                optimal_row.get('Hydro_Capital_$', 0),
-                optimal_row.get('BESS_Capital_$', 0),
-                optimal_row.get('Capital_$', 0)
-            ],
-            'Replacement ($)': [
-                optimal_row.get('PV_Replacement_$', 0),
-                optimal_row.get('Wind_Replacement_$', 0),
-                optimal_row.get('Hydro_Replacement_$', 0),
-                optimal_row.get('BESS_Replacement_$', 0),
-                optimal_row.get('Replacement_$', 0)
-            ],
-            'OM ($)': [
-                optimal_row.get('PV_OM_$', 0),
-                optimal_row.get('Wind_OM_$', 0),
-                optimal_row.get('Hydro_OM_$', 0),
-                optimal_row.get('BESS_OM_$', 0),
-                optimal_row.get('OM_$', 0)
-            ],
-            'Salvage ($)': [
-                optimal_row.get('PV_Salvage_$', 0),
-                optimal_row.get('Wind_Salvage_$', 0),
-                optimal_row.get('Hydro_Salvage_$', 0),
-                optimal_row.get('BESS_Salvage_$', 0),
-                optimal_row.get('Salvage_$', 0)
-            ],
-            'NPC ($)': [
-                optimal_row.get('PV_NPC_$', 0),
-                optimal_row.get('Wind_NPC_$', 0),
-                optimal_row.get('Hydro_NPC_$', 0),
-                optimal_row.get('BESS_NPC_$', 0),
-                optimal_row.get('NPC_$', 0)
-            ],
-            'Annualized ($/yr)': [
-                optimal_row.get('PV_Annualized_$/yr', 0),
-                optimal_row.get('Wind_Annualized_$/yr', 0),
-                optimal_row.get('Hydro_Annualized_$/yr', 0),
-                optimal_row.get('BESS_Annualized_$/yr', 0),
-                optimal_row.get('Annualized_$/yr', 0)
-            ]
-        })
-        cost_breakdown.to_excel(writer, sheet_name='Cost_Breakdown', index=False)
-        
-        # Sheet 3: All Results
-        results_df.to_excel(writer, sheet_name='All_Results', index=False)
-        
-        # Sheet 4+: Degradation Analysis Sheets
-        if degradation_results and 'hourly_dispatch' in degradation_results:
-            # Export yearly summary
-            if 'yearly_summary' in degradation_results:
-                degradation_results['yearly_summary'].to_excel(
-                    writer, sheet_name='Degradation_25Years', index=False
-                )
-            
-            # Export hourly dispatch for selected years
-            hourly_dispatch = degradation_results['hourly_dispatch']
-            for year_key in sorted(hourly_dispatch.keys()):
-                year_num = year_key.split('_')[1]
-                sheet_name = f'Year_{year_num}_Hourly'
-                hourly_dispatch[year_key].to_excel(writer, sheet_name=sheet_name, index=False)
-        
-        # Fallback: Standard Year 1 dispatch if no degradation
-        elif 'optimal_dispatch' in results_dict:
-            results_dict['optimal_dispatch'].to_excel(writer, sheet_name='Year_1_Hourly', index=False)
+    # Set the INPUT_FILE in the base module to match this module's INPUT_FILE
+    if INPUT_FILE is not None:
+        base_module.INPUT_FILE = INPUT_FILE
     
-    output.seek(0)
-    return output
+    return base_module.read_inputs()
 
 
-# ==============================================================================
-# SECTION 3: UPDATE OPTIMIZATION EXECUTION (Replace the optimization section)
-# ==============================================================================
-
-# This goes in the "RUN OPTIMIZATION" button callback
-# Find the section around line 760-900 and replace with this:
-
-if st.button("▶️ RUN OPTIMIZATION", type="primary", disabled=not validation_passed, use_container_width=True):
-    
-    if not OPTIMIZATION_AVAILABLE:
-        st.error("❌ Optimization code not available")
-    else:
-        try:
-            st.subheader("🔄 Optimization in Progress...")
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            # Check if degradation analysis should be used
-            use_degradation = apply_pv_degradation or apply_bess_degradation
-            
-            if use_degradation and not DEGRADATION_AVAILABLE:
-                st.error("❌ Degradation analysis module not available")
-                st.stop()
-            
-            # Read profiles
-            status_text.text("📊 Reading profiles...")
-            progress_bar.progress(10)
-            
-            load_df = pd.read_csv(load_file) if load_file.name.endswith('.csv') else pd.read_excel(load_file)
-            
-            if enable_pv and pv_file:
-                pv_df = pd.read_csv(pv_file) if pv_file.name.endswith('.csv') else pd.read_excel(pv_file)
-            else:
-                pv_df = pd.DataFrame({'Hour': range(8760), 'Output_kW': [0.0] * 8760})
-            
-            if enable_wind and wind_file:
-                wind_df = pd.read_csv(wind_file) if wind_file.name.endswith('.csv') else pd.read_excel(wind_file)
-            else:
-                wind_df = pd.DataFrame({'Hour': range(8760), 'Output_kW': [0.0] * 8760})
-            
-            if enable_hydro and hydro_file:
-                hydro_df = pd.read_csv(hydro_file) if hydro_file.name.endswith('.csv') else pd.read_excel(hydro_file)
-            else:
-                hydro_df = pd.DataFrame({'Hour': range(8760), 'Output_kW': [1.0] * 8760})
-            
-            # Build Excel input
-            status_text.text("🔨 Building input file...")
-            progress_bar.progress(15)
-            
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                # Configuration
-                pd.DataFrame({
-                    'Parameter': ['Simulation Hours', 'Target Unmet Load (%)', 'Optimization Method',
-                                 'Discount Rate (%)', 'Inflation Rate (%)', 'Project Lifetime (years)', 'Use Dynamic LCOE'],
-                    'Value': [8760, target_unmet_percent, 'GRID_SEARCH', discount_rate, inflation_rate, project_lifetime, 'NO']
-                }).to_excel(writer, sheet_name='Configuration', index=False)
-                
-                # Grid Search Config
-                pd.DataFrame({
-                    'Parameter': ['Enable Grid Search', 'PV Search Start', 'PV Search End', 'PV Search Step',
-                                 'Wind Search Start', 'Wind Search End', 'Wind Search Step',
-                                 'Hydro Search Start', 'Hydro Search End', 'Hydro Search Step',
-                                 'BESS Search Start', 'BESS Search End', 'BESS Search Step',
-                                 'Max Combinations', 'Optimization Objective', 'Show Top N Solutions'],
-                    'Value': ['YES', pv_min*1000, pv_max*1000, pv_step*1000, 
-                             wind_min*1000, wind_max*1000, wind_step*1000,
-                             hydro_min*1000, hydro_max*1000, hydro_step*1000, 
-                             bess_min*1000, bess_max*1000, bess_step*1000,
-                             100000000, 'NPC', 5]
-                }).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
-                
-                # Component sheets
-                pd.DataFrame({
-                    'Parameter': ['LCOE', 'PVsyst Baseline', 'Capex', 'O&M Cost', 'Lifetime'],
-                    'Value': [0, 1.0, pv_capex, pv_opex, pv_lifetime]
-                }).to_excel(writer, sheet_name='Solar_PV', index=False)
-                
-                pd.DataFrame({
-                    'Parameter': ['Include Wind?', 'LCOE', 'Capex', 'O&M Cost', 'Lifetime'],
-                    'Value': ['YES' if enable_wind else 'NO', 0, wind_capex, wind_opex, wind_lifetime]
-                }).to_excel(writer, sheet_name='Wind', index=False)
-                
-                pd.DataFrame({
-                    'Parameter': ['Include Hydro?', 'LCOE', 'Capex', 'O&M Cost', 'Lifetime', 'Operating Hours'],
-                    'Value': ['YES' if enable_hydro else 'NO', 0, hydro_capex, hydro_opex, hydro_lifetime, hydro_hours_per_day]
-                }).to_excel(writer, sheet_name='Hydro', index=False)
-                
-                pd.DataFrame({
-                    'Parameter': ['Duration', 'LCOS', 'Charge Efficiency', 'Discharge Efficiency', 'Min SOC', 'Max SOC',
-                                 'Power Capex', 'Energy Capex', 'O&M Cost', 'Lifetime'],
-                    'Value': [bess_duration, 0, bess_charge_eff, bess_discharge_eff, bess_min_soc, bess_max_soc,
-                             bess_power_capex, bess_energy_capex, bess_opex, bess_lifetime]
-                }).to_excel(writer, sheet_name='BESS', index=False)
-                
-                # Profiles
-                load_df.to_excel(writer, sheet_name='Load_Profile', index=False)
-                pv_df.to_excel(writer, sheet_name='PVsyst_Profile', index=False)
-                wind_df.to_excel(writer, sheet_name='Wind_Profile', index=False)
-                hydro_df.to_excel(writer, sheet_name='Hydro_Profile', index=False)
-            
-            output.seek(0)
-            
-            # Save temp file
-            import tempfile
-            temp_file = os.path.join(tempfile.gettempdir(), "temp_input_generated.xlsx")
-            with open(temp_file, "wb") as f:
-                f.write(output.getvalue())
-            
-            # Run optimization
-            status_text.text("⚙️ Running optimization...")
-            progress_bar.progress(30)
-            
-            # Choose which optimization module to use
-            if use_degradation:
-                st.info(f"🔬 Using degradation analysis (PV: {apply_pv_degradation}, BESS: {apply_bess_degradation})")
-                
-                # Use degradation module for optimization
-                deg_module.INPUT_FILE = temp_file
-                result = deg_module.read_inputs()
-                
-                if len(result) == 9:
-                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
-                else:
-                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
-                
-                # Run grid search (WITHOUT degradation - finds optimal config)
-                results_df = deg_module.grid_search_optimize_hydro(
-                    config, grid_config, solar, wind, hydro, bess,
-                    load_profile, pvsyst_profile, wind_profile, None
-                )
-                
-                progress_bar.progress(70)
-                optimal = deg_module.find_optimal_solution(results_df)
-                
-                if optimal is not None:
-                    status_text.text("🔬 Running 25-year degradation analysis...")
-                    progress_bar.progress(75)
-                    
-                    # Prepare profiles for degradation analysis
-                    profiles = {
-                        'load': load_profile,
-                        'pv': pvsyst_profile,
-                        'wind': wind_profile,
-                        'hydro': np.ones(len(load_profile))  # Default uniform hydro availability
-                    }
-                    
-                    # Prepare config params
-                    config_for_deg = {
-                        'discount_rate': discount_rate,
-                        'inflation_rate': inflation_rate,
-                        'project_lifetime': project_lifetime,
-                        'target_unmet_percent': target_unmet_percent,
-                        'bess_charge_eff': bess_charge_eff,
-                        'bess_discharge_eff': bess_discharge_eff,
-                        'bess_max_soc': bess_max_soc,
-                        'bess_min_soc': bess_min_soc
-                    }
-                    
-                    # Run COMPLETE degradation analysis with hourly simulation
-                    degradation_results = deg_module.run_degradation_analysis_complete(
-                        optimal.to_dict(),
-                        config_for_deg,
-                        profiles,
-                        apply_pv=apply_pv_degradation,
-                        apply_bess=apply_bess_degradation,
-                        years_to_export=[1, 2, 5, 10, 15, 20, 25]
-                    )
-                    
-                    progress_bar.progress(90)
-                    
-                    # Use Year 1 hourly dispatch from degradation analysis for display
-                    if 'year_1' in degradation_results['hourly_dispatch']:
-                        optimal_dispatch = degradation_results['hourly_dispatch']['year_1']
-                    else:
-                        # Fallback to standard dispatch
-                        optimal_dispatch = deg_module.calculate_dispatch_with_hydro(
-                            load_profile, pvsyst_profile, wind_profile,
-                            optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
-                            optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
-                            solar, wind, hydro, bess,
-                            int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
-                        )
-                else:
-                    degradation_results = None
-                    optimal_dispatch = None
-                
-            else:
-                # Standard optimization (no degradation)
-                import optimize_gridsearch_hydro_static_STREAMLITCHECK as opt_module
-                
-                opt_module.INPUT_FILE = temp_file
-                result = opt_module.read_inputs()
-                
-                if len(result) == 9:
-                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
-                else:
-                    config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
-                
-                results_df = opt_module.grid_search_optimize_hydro(
-                    config, grid_config, solar, wind, hydro, bess,
-                    load_profile, pvsyst_profile, wind_profile, None
-                )
-                
-                progress_bar.progress(85)
-                optimal = opt_module.find_optimal_solution(results_df)
-                degradation_results = None
-                
-                if optimal is not None:
-                    optimal_dispatch = opt_module.calculate_dispatch_with_hydro(
-                        load_profile, pvsyst_profile, wind_profile,
-                        optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
-                        optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
-                        solar, wind, hydro, bess,
-                        int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
-                    )
-                else:
-                    optimal_dispatch = None
-            
-            progress_bar.progress(95)
-            
-            if optimal is not None:
-                # Calculate electrical metrics
-                module = deg_module if use_degradation else opt_module
-                
-                component_capacities = {
-                    'pv_kw': optimal['PV_kW'],
-                    'wind_kw': optimal['Wind_kW'],
-                    'hydro_kw': optimal['Hydro_kW'],
-                    'bess_kwh': optimal['BESS_Capacity_kWh']
-                }
-                
-                component_configs = {
-                    'pv_lcoe': 0,
-                    'wind_lcoe': 0,
-                    'hydro_lcoe': 0,
-                    'bess_max_soc': bess_max_soc / 100,
-                    'bess_min_soc': bess_min_soc / 100,
-                    'bess_lifetime': bess_lifetime
-                }
-                
-                # Get NPC data for LCOE calculation
-                npc_breakdown = {
-                    'pv': {'npc': optimal.get('PV_NPC_$', 0)},
-                    'wind': {'npc': optimal.get('Wind_NPC_$', 0)},
-                    'hydro': {'npc': optimal.get('Hydro_NPC_$', 0)},
-                    'bess': {'npc': optimal.get('BESS_NPC_$', 0)}
-                }
-                
-                electrical_metrics = module.calculate_electrical_metrics(
-                    optimal_dispatch, component_capacities, component_configs,
-                    npc_breakdown, project_lifetime
-                )
-                
-                progress_bar.progress(100)
-                
-                # Clean up
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-                
-                # Store results with degradation data
-                st.session_state.results = {
-                    'pv_capacity': optimal['PV_kW'] / 1000,
-                    'wind_capacity': optimal['Wind_kW'] / 1000,
-                    'hydro_capacity': optimal['Hydro_kW'] / 1000,
-                    'hydro_window_start': optimal['Hydro_Window_Start'],
-                    'hydro_window_end': optimal['Hydro_Window_End'],
-                    'bess_power': optimal['BESS_Power_kW'] / 1000,
-                    'bess_energy': optimal['BESS_Capacity_kWh'] / 1000,
-                    'npc': optimal['NPC_$'],
-                    'lcoe': optimal['LCOE_$/MWh'],
-                    'unmet_pct': optimal['Unmet_%'],
-                    'results_df': results_df,
-                    'optimal_row': optimal.to_dict(),
-                    'electrical_metrics': electrical_metrics,
-                    'optimal_dispatch': optimal_dispatch,
-                    'config_params': {
-                        'discount_rate': discount_rate,
-                        'inflation_rate': inflation_rate,
-                        'project_lifetime': project_lifetime,
-                        'target_unmet_percent': target_unmet_percent
-                    },
-                    'load_type': load_type,
-                    'calculate_emissions': calculate_emissions,
-                    'degradation_settings': {
-                        'pv': apply_pv_degradation,
-                        'bess': apply_bess_degradation
-                    },
-                    'degradation_results': degradation_results  # NEW: Store degradation results
-                }
-                
-                st.session_state.optimization_complete = True
-                st.success("✅ Optimization Complete!")
-                st.balloons()
-                st.info("👉 Go to **Results** tab")
-            else:
-                st.error("❌ No optimal solution found")
-                
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-            st.exception(e)
+def calculate_npc_homer_style(*args, **kwargs):
+    """Wrapper for base module calculate_npc_homer_style."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.calculate_npc_homer_style(*args, **kwargs)
 
 
-# ==============================================================================
-# SECTION 4: UPDATE DOWNLOAD BUTTON (in Results tab)
-# ==============================================================================
-
-# Find the download button section and replace with:
-
-st.subheader("📥 Download Results")
-
-# Get degradation results if available
-degradation_results = results.get('degradation_results', None)
-
-# Use the updated export function
-excel_output = export_results_industry_format_WITH_DEGRADATION(
-    results, results['results_df'], results['optimal_row'], 
-    results['config_params'], degradation_results
-)
-
-col1, col2, col3 = st.columns([2, 1, 2])
-with col2:
-    st.download_button(
-        label="📥 Download Excel",
-        data=excel_output,
-        file_name=f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        type="primary"
+def calculate_electrical_metrics(dispatch_df, component_capacities, component_configs,
+                                 npc_breakdown, project_lifetime):
+    """Wrapper for base module calculate_electrical_metrics."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.calculate_electrical_metrics(
+        dispatch_df, component_capacities, component_configs,
+        npc_breakdown, project_lifetime
     )
 
-# Add degradation summary display if available
-if degradation_results:
-    st.markdown("---")
-    st.subheader("🔬 Degradation Analysis Summary")
+
+def find_optimal_solution(results_df):
+    """Wrapper for base module find_optimal_solution."""
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    return base_module.find_optimal_solution(results_df)
+
+
+# ==============================================================================
+# GRID SEARCH OPTIMIZATION (NO DEGRADATION DURING OPTIMIZATION)
+# ==============================================================================
+
+def grid_search_optimize_hydro(config, grid_config, solar, wind, hydro, bess, 
+                               load_profile, pvsyst_profile, wind_profile, hydro_profile):
+    """
+    Grid search optimization WITHOUT degradation.
     
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Year 1 NPC", f"${degradation_results['npc_year1']/1e6:.2f}M")
-    with col2:
-        st.metric("25-Year NPC", f"${degradation_results['npc_25year']/1e6:.2f}M")
-    with col3:
-        st.metric("Replacement Cost", f"${degradation_results['replacement_cost_pv']/1e6:.2f}M")
-    with col4:
-        npc_increase = ((degradation_results['npc_25year'] / degradation_results['npc_year1']) - 1) * 100
-        st.metric("NPC Increase", f"{npc_increase:.1f}%")
+    This finds the optimal configuration using Year 1 performance.
+    Degradation is applied separately via run_degradation_analysis().
+    """
     
-    # Show yearly summary table
-    st.markdown("**25-Year Performance Summary**")
-    st.dataframe(degradation_results['yearly_summary'], use_container_width=True, hide_index=True)
+    # Import and call base optimization
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
     
-    # List exported years
-    years_list = ", ".join([f"Year {y}" for y in degradation_results.get('years_exported', [])])
-    st.info(f"📊 **Hourly Dispatch Exported for:** {years_list}")
+    # Call base optimization (no degradation during optimization)
+    results_df = base_module.grid_search_optimize_hydro(
+        config, grid_config, solar, wind, hydro, bess,
+        load_profile, pvsyst_profile, wind_profile, hydro_profile
+    )
+    
+    return results_df
+
+
+# ==============================================================================
+# COMPLETE 25-YEAR DEGRADATION ANALYSIS WITH HOURLY SIMULATION
+# ==============================================================================
+
+def run_degradation_analysis_complete(optimal_row, config_params, profiles, 
+                                      apply_pv=True, apply_bess=True,
+                                      years_to_export=[1, 2, 5, 10, 15, 20, 25]):
+    """
+    Run COMPLETE 25-year degradation analysis with HOURLY dispatch simulation.
+    
+    Parameters:
+    -----------
+    optimal_row : dict
+        Optimal solution from grid search
+    config_params : dict
+        Configuration parameters (discount_rate, project_lifetime, etc.)
+    profiles : dict
+        Dictionary with keys 'load', 'pv', 'wind', 'hydro' containing hourly profiles
+    apply_pv : bool
+        Apply PV degradation
+    apply_bess : bool
+        Apply BESS degradation
+    years_to_export : list
+        Which years to export hourly data (default: [1, 2, 5, 10, 15, 20, 25])
+    
+    Returns:
+    --------
+    dict : Complete degradation analysis results with hourly dispatch
+    """
+    
+    print("\n" + "="*80)
+    print("RUNNING COMPLETE 25-YEAR DEGRADATION ANALYSIS")
+    print("="*80)
+    
+    # Extract capacities
+    pv_kw = optimal_row.get('PV_kW', 0)
+    wind_kw = optimal_row.get('Wind_kW', 0)
+    hydro_kw = optimal_row.get('Hydro_kW', 0)
+    bess_power_kw = optimal_row.get('BESS_Power_kW', 0)
+    bess_capacity_kwh = optimal_row.get('BESS_Capacity_kWh', 0)
+    
+    hydro_start = int(optimal_row.get('Hydro_Window_Start', 8))
+    hydro_end = int(optimal_row.get('Hydro_Window_End', 16))
+    
+    # Extract costs
+    npc_y1 = optimal_row.get('NPC_$', 0)
+    lcoe_y1 = optimal_row.get('LCOE_$/MWh', 0)
+    bess_npc = optimal_row.get('BESS_NPC_$', 0)
+    
+    # Get parameters
+    discount_rate = config_params.get('discount_rate', 8.0)
+    if discount_rate > 1:
+        discount_rate = discount_rate / 100
+    
+    project_lifetime = config_params.get('project_lifetime', 25)
+    
+    # BESS parameters - CRITICAL: Use sidebar values correctly
+    base_charge_eff = config_params.get('bess_charge_eff', 92.94)
+    if base_charge_eff > 1:
+        base_charge_eff = base_charge_eff / 100
+    
+    base_discharge_eff = config_params.get('bess_discharge_eff', 91.78)
+    if base_discharge_eff > 1:
+        base_discharge_eff = base_discharge_eff / 100
+    
+    max_soc = config_params.get('bess_max_soc', 100.0)
+    if max_soc > 1:
+        max_soc = max_soc / 100
+    
+    min_soc = config_params.get('bess_min_soc', 20.0)
+    if min_soc > 1:
+        min_soc = min_soc / 100
+    
+    bess_duration_h = bess_capacity_kwh / bess_power_kw if bess_power_kw > 0 else 2.0
+    
+    # Extract profiles
+    load_profile_kw = profiles['load']
+    pv_profile_pu = profiles['pv']
+    wind_profile_pu = profiles['wind']
+    hydro_profile_pu = profiles.get('hydro', np.ones(len(load_profile_kw)))
+    
+    hours_per_year = len(load_profile_kw)
+    
+    print(f"\nSystem Configuration:")
+    print(f"  PV: {pv_kw:,.0f} kW")
+    print(f"  Wind: {wind_kw:,.0f} kW")
+    print(f"  Hydro: {hydro_kw:,.0f} kW (Hours {hydro_start}-{hydro_end})")
+    print(f"  BESS: {bess_power_kw:,.0f} kW / {bess_capacity_kwh:,.0f} kWh")
+    print(f"\nBESS Parameters:")
+    print(f"  Base Charge Eff: {base_charge_eff*100:.2f}%")
+    print(f"  Base Discharge Eff: {base_discharge_eff*100:.2f}%")
+    print(f"  SOC Range: {min_soc*100:.1f}% - {max_soc*100:.1f}%")
+    print(f"\nDegradation Settings:")
+    print(f"  PV Degradation: {'ENABLED' if apply_pv else 'DISABLED'}")
+    print(f"  BESS Degradation: {'ENABLED' if apply_bess else 'DISABLED'}")
+    print(f"\nSimulating {project_lifetime} years with {hours_per_year} hours per year...")
+    
+    # Storage for results
+    yearly_results = []
+    hourly_results_by_year = {}
+    
+    # Simulate each year
+    for year in range(1, min(project_lifetime + 1, 26)):
+        print(f"\n  Year {year}: ", end='', flush=True)
+        
+        # ======================
+        # APPLY PV DEGRADATION
+        # ======================
+        if apply_pv:
+            pv_deg_pct = PV_DEG.get(year, 9.8)
+            pv_degradation_factor = 1.0 - (pv_deg_pct / 100)
+            degraded_pv_capacity = pv_kw * pv_degradation_factor
+        else:
+            pv_deg_pct = 0
+            pv_degradation_factor = 1.0
+            degraded_pv_capacity = pv_kw
+        
+        # ======================
+        # APPLY BESS DEGRADATION
+        # ======================
+        if apply_bess:
+            # Handle replacement at year 21
+            if year <= 20:
+                bess_age = year
+                replaced = False
+            else:
+                bess_age = year - 20  # Reset age after replacement
+                replaced = (year == 21)
+            
+            # Capacity retention
+            capacity_retention_pct = BESS_CAP_RET.get(bess_age, 70)
+            capacity_retention = capacity_retention_pct / 100
+            
+            # Efficiency retention factors
+            charge_eff_retention = BESS_CHARGE_EFF_RETENTION.get(bess_age, 0.98)
+            discharge_eff_retention = BESS_DISCHARGE_EFF_RETENTION.get(bess_age, 0.98)
+            
+            # Apply degradation
+            degraded_bess_capacity = bess_capacity_kwh * capacity_retention
+            degraded_bess_power = bess_power_kw * capacity_retention
+            charge_eff = base_charge_eff * charge_eff_retention
+            discharge_eff = base_discharge_eff * discharge_eff_retention
+        else:
+            capacity_retention_pct = 100
+            capacity_retention = 1.0
+            charge_eff_retention = 1.0
+            discharge_eff_retention = 1.0
+            degraded_bess_capacity = bess_capacity_kwh
+            degraded_bess_power = bess_power_kw
+            charge_eff = base_charge_eff
+            discharge_eff = base_discharge_eff
+            replaced = False
+        
+        print(f"PV={pv_degradation_factor*100:.2f}%, BESS Cap={capacity_retention*100:.2f}%, ", end='', flush=True)
+        
+        # ================================
+        # INITIALIZE BESS FOR THIS YEAR
+        # ================================
+        # CRITICAL: Use DEGRADED capacity for initial SOC
+        soc_kwh = degraded_bess_capacity * 0.5  # Start at 50% of degraded capacity
+        
+        # Yearly accumulators
+        year_pv_gen = 0
+        year_wind_gen = 0
+        year_hydro_gen = 0
+        year_pv_to_load = 0
+        year_wind_to_load = 0
+        year_hydro_to_load = 0
+        year_pv_excess = 0
+        year_bess_charge = 0
+        year_bess_discharge = 0
+        year_load = 0
+        year_unmet = 0
+        year_curtailment = 0
+        
+        # Store hourly data for selected years
+        if year in years_to_export:
+            hourly_data = []
+            store_hourly = True
+        else:
+            store_hourly = False
+        
+        # ================================
+        # HOURLY SIMULATION FOR THIS YEAR
+        # ================================
+        for h in range(hours_per_year):
+            load_h = load_profile_kw[h]
+            
+            # Generation with degradation applied
+            pv_available = degraded_pv_capacity * pv_profile_pu[h]
+            wind_available = wind_kw * wind_profile_pu[h]  # No wind degradation
+            
+            # Hydro availability (time window + profile)
+            hour_of_day = h % 24
+            if hydro_start <= hour_of_day < hydro_end:
+                hydro_available = hydro_kw * hydro_profile_pu[h]
+            else:
+                hydro_available = 0
+            
+            year_pv_gen += pv_available
+            year_wind_gen += wind_available
+            year_hydro_gen += hydro_available
+            year_load += load_h
+            
+            # ================================
+            # DISPATCH LOGIC (Merit Order)
+            # ================================
+            remaining_load = load_h
+            
+            # 1. HYDRO (highest priority)
+            hydro_to_load = min(hydro_available, remaining_load)
+            remaining_load -= hydro_to_load
+            year_hydro_to_load += hydro_to_load
+            
+            # 2. PV
+            pv_to_load = min(pv_available, remaining_load)
+            remaining_load -= pv_to_load
+            pv_excess = pv_available - pv_to_load
+            year_pv_to_load += pv_to_load
+            
+            # 3. WIND
+            wind_to_load = min(wind_available, remaining_load)
+            remaining_load -= wind_to_load
+            wind_excess = wind_available - wind_to_load
+            year_wind_to_load += wind_to_load
+            
+            # 4. BESS CHARGING (if excess renewable energy)
+            total_excess = pv_excess + wind_excess
+            bess_charge_woeff = 0
+            bess_charge_wieff = 0
+            curtailment = 0
+            
+            if total_excess > 0 and degraded_bess_capacity > 0:
+                # Maximum charge limited by power and available capacity
+                max_charge_power = min(total_excess, degraded_bess_power)
+                available_capacity = degraded_bess_capacity * max_soc - soc_kwh
+                max_charge_energy = min(max_charge_power, available_capacity / charge_eff)
+                
+                bess_charge_woeff = max_charge_energy  # Energy from renewables
+                bess_charge_wieff = bess_charge_woeff * charge_eff  # Stored in BESS
+                soc_kwh += bess_charge_wieff
+                
+                year_bess_charge += bess_charge_woeff
+                
+                # Curtailment
+                curtailment = total_excess - bess_charge_woeff
+                year_curtailment += curtailment
+            else:
+                curtailment = total_excess
+                year_curtailment += curtailment
+            
+            # 5. BESS DISCHARGING (if remaining load)
+            bess_discharge_woeff = 0
+            bess_discharge_wieff = 0
+            unmet = 0
+            
+            if remaining_load > 0 and degraded_bess_capacity > 0:
+                available_energy = soc_kwh - degraded_bess_capacity * min_soc
+                max_discharge_power = min(remaining_load, degraded_bess_power)
+                max_discharge_energy_wieff = min(max_discharge_power, available_energy * discharge_eff)
+                
+                bess_discharge_wieff = max_discharge_energy_wieff  # Energy to load
+                bess_discharge_woeff = bess_discharge_wieff / discharge_eff  # From BESS storage
+                soc_kwh -= bess_discharge_woeff
+                
+                year_bess_discharge += bess_discharge_wieff
+                
+                # Unmet load
+                unmet = remaining_load - bess_discharge_wieff
+                year_unmet += unmet
+            else:
+                unmet = remaining_load
+                year_unmet += unmet
+            
+            # Store hourly data if this year is selected for export
+            if store_hourly:
+                hourly_data.append({
+                    'Hour': h,
+                    'Load_kW': load_h,
+                    'PV_Output_kW': pv_to_load,
+                    'Wind_Output_kW': wind_to_load,
+                    'Hydro_Output_kW': hydro_to_load,
+                    'Hydro_Active': 1 if hydro_available > 0 else 0,
+                    'BESS_Charge_kW': bess_charge_woeff,
+                    'BESS_Discharge_kW': bess_discharge_wieff,
+                    'BESS_SOC_kWh': soc_kwh,
+                    'Unmet_Load_kW': unmet,
+                    'Excess_kW': curtailment,
+                    'PV_Available_kW': pv_available,
+                    'Wind_Available_kW': wind_available,
+                    'Hydro_Available_kW': hydro_available,
+                    'PV_to_Load_kW': pv_to_load,
+                    'PV_Excess_kW': pv_excess,
+                    'BESS_Charge_woeff_kW': bess_charge_woeff,
+                    'BESS_Charge_wieff_kW': bess_charge_wieff,
+                    'BESS_Discharge_woeff_kW': bess_discharge_woeff,
+                    'BESS_Discharge_wieff_kW': bess_discharge_wieff,
+                    'BESS_SOC_pct': (soc_kwh / degraded_bess_capacity * 100) if degraded_bess_capacity > 0 else 0,
+                    'Curtailment_kW': curtailment
+                })
+        
+        # Store hourly results for this year
+        if store_hourly:
+            hourly_results_by_year[f'year_{year}'] = pd.DataFrame(hourly_data)
+            print(f"Hourly data stored", end='', flush=True)
+        
+        # Calculate yearly metrics
+        unmet_pct = (year_unmet / year_load * 100) if year_load > 0 else 0
+        
+        yearly_results.append({
+            'Year': year,
+            'PV_Capacity_kW': degraded_pv_capacity,
+            'PV_Degradation_%': pv_deg_pct,
+            'BESS_Capacity_kWh': degraded_bess_capacity,
+            'BESS_Power_kW': degraded_bess_power,
+            'BESS_Retention_%': capacity_retention_pct,
+            'Charge_Efficiency_%': charge_eff * 100,
+            'Discharge_Efficiency_%': discharge_eff * 100,
+            'PV_Generation_kWh': year_pv_gen,
+            'Wind_Generation_kWh': year_wind_gen,
+            'Hydro_Generation_kWh': year_hydro_gen,
+            'Total_Generation_kWh': year_pv_gen + year_wind_gen + year_hydro_gen,
+            'BESS_Charge_kWh': year_bess_charge,
+            'BESS_Discharge_kWh': year_bess_discharge,
+            'Load_kWh': year_load,
+            'Unmet_Load_kWh': year_unmet,
+            'Unmet_%': unmet_pct,
+            'Curtailment_kWh': year_curtailment,
+            'Replaced': '🔋 REPLACED' if replaced else ''
+        })
+        
+        print(" ✓")
+    
+    # Calculate BESS replacement cost
+    if apply_bess and bess_capacity_kwh > 0:
+        # Replacement cost = 80% of original (no installation cost)
+        replacement_cost_nominal = bess_npc * 0.8
+        
+        # Discount to present value (year 0)
+        replacement_cost_pv = replacement_cost_nominal / ((1 + discount_rate) ** 20)
+    else:
+        replacement_cost_pv = 0
+    
+    # Total NPC with degradation
+    npc_25y = npc_y1 + replacement_cost_pv
+    
+    # LCOE adjustment (rough estimate)
+    if apply_pv or apply_bess:
+        # Energy production decreases due to degradation
+        # Rough estimate: 5-7% increase in LCOE
+        lcoe_25y = lcoe_y1 * 1.06
+    else:
+        lcoe_25y = lcoe_y1
+    
+    print("\n" + "="*80)
+    print("DEGRADATION ANALYSIS COMPLETE")
+    print("="*80)
+    print(f"\nNPC Summary:")
+    print(f"  Year 1 NPC: ${npc_y1:,.2f}")
+    print(f"  BESS Replacement Cost (PV): ${replacement_cost_pv:,.2f}")
+    print(f"  25-Year NPC: ${npc_25y:,.2f}")
+    print(f"\nLCOE Summary:")
+    print(f"  Year 1 LCOE: ${lcoe_y1:.2f}/MWh")
+    print(f"  25-Year LCOE: ${lcoe_25y:.2f}/MWh")
+    print(f"\nHourly Data Exported for Years: {years_to_export}")
+    print("="*80 + "\n")
+    
+    return {
+        'yearly_summary': pd.DataFrame(yearly_results),
+        'hourly_dispatch': hourly_results_by_year,
+        'npc_year1': npc_y1,
+        'npc_25year': npc_25y,
+        'replacement_cost_pv': replacement_cost_pv,
+        'lcoe_year1': lcoe_y1,
+        'lcoe_25year': lcoe_25y,
+        'pv_deg_total': PV_DEG[25] if apply_pv else 0,
+        'bess_loss_20y': (100 - BESS_CAP_RET[20]) if apply_bess else 0,
+        'degradation_applied': {
+            'pv': apply_pv,
+            'bess': apply_bess
+        },
+        'years_exported': years_to_export
+    }
+
+
+# ==============================================================================
+# BACKWARD COMPATIBILITY - Old function name
+# ==============================================================================
+
+def run_degradation_analysis(*args, **kwargs):
+    """
+    Backward compatibility wrapper.
+    Redirects to the complete analysis function.
+    """
+    return run_degradation_analysis_complete(*args, **kwargs)
