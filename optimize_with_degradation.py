@@ -7,22 +7,37 @@ Author: SJ
 Version: 2.0 - Streamlit Compatible
 """
 
+# ==============================================================================
+# IMPORTS
+# ==============================================================================
+
+import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+from datetime import datetime
+import os
+from io import BytesIO
 
-# Import base optimization functions
+# Import optimization code
 try:
-    from optimize_gridsearch_hydro_static_STREAMLITCHECK import (
-        read_inputs,
-        calculate_dispatch_with_hydro,
-        calculate_npc_homer_style,
-        calculate_electrical_metrics,
-        find_optimal_solution
-    )
-    BASE_MODULE_AVAILABLE = True
+    import optimize_gridsearch_hydro_static_STREAMLITCHECK as opt_module
+    OPTIMIZATION_AVAILABLE = True
 except ImportError:
-    BASE_MODULE_AVAILABLE = False
-    print("Warning: Base optimization module not found")
+    OPTIMIZATION_AVAILABLE = False
+    st.error("Optimization module not found")
+
+# Import degradation analysis
+DEGRADATION_AVAILABLE = False
+try:
+    import optimize_with_degradation as deg_module
+    DEGRADATION_AVAILABLE = True
+except ImportError:
+    pass
+except Exception as e:
+    print(f"Warning: Degradation module not available - {e}")
 
 # ==============================================================================
 # OEM DEGRADATION DATA
@@ -219,3 +234,4 @@ Your directory should have:
 ├── streamlit_app_with_degradation.py (or whatever your main app is named)
 ├── optimize_gridsearch_hydro_static_STREAMLITCHECK.py
 └── optimize_with_degradation.py  ← NEW FILE (renamed from the old one)
+
