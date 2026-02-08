@@ -224,9 +224,7 @@ __all__ = [
     'PV_DEG',
     'BESS_CAP_RET'
 ]
-```
 
-## Step 3: Verify the file structure
 
 
 
