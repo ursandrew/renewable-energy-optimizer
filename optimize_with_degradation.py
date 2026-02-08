@@ -4,7 +4,7 @@ DEGRADATION ANALYSIS MODULE FOR STREAMLIT
 Full degradation engine for PV + BESS systems with grid search optimization
 
 Author: SJ
-Version: 2.1 - Streamlit Compatible (Fixed Imports)
+Version: 2.2 - Fixed INPUT_FILE handling
 """
 
 import pandas as pd
@@ -34,8 +34,17 @@ INPUT_FILE = None
 # ==============================================================================
 
 def read_inputs():
-    """Wrapper for base module read_inputs."""
+    """
+    Wrapper for base module read_inputs.
+    
+    CRITICAL: This sets the INPUT_FILE in the base module before calling read_inputs.
+    """
     import optimize_gridsearch_hydro_static_STREAMLITCHECK as base_module
+    
+    # Set the INPUT_FILE in the base module to match this module's INPUT_FILE
+    if INPUT_FILE is not None:
+        base_module.INPUT_FILE = INPUT_FILE
+    
     return base_module.read_inputs()
 
 
