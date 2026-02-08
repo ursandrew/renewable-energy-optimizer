@@ -228,10 +228,6 @@ __all__ = [
 
 ## Step 3: Verify the file structure
 
-Your directory should have:
-```
-/your_project_folder/
-├── streamlit_app_with_degradation.py (or whatever your main app is named)
-├── optimize_gridsearch_hydro_static_STREAMLITCHECK.py
-└── optimize_with_degradation.py  ← NEW FILE (renamed from the old one)
+
+
 
