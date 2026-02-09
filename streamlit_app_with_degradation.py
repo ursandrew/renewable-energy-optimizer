@@ -1339,11 +1339,26 @@ with tab2:
                         
                         progress_bar.progress(90)
                         
-                        # Use Year 1 hourly dispatch from degradation analysis for display
+                        # Use Year 1 hourly dispatch from degradation analysis
                         if 'year_1' in degradation_results['hourly_dispatch']:
-                            optimal_dispatch = degradation_results['hourly_dispatch']['year_1']
+                            # Get Year 1 with Anaconda column names (for display/Excel)
+                            year_1_anaconda = degradation_results['hourly_dispatch']['year_1']
+                            
+                            # Create version with expected column names for electrical metrics
+                            optimal_dispatch = year_1_anaconda.copy()
+                            if 'PV_to_Load_kW' in optimal_dispatch.columns:
+                                optimal_dispatch['PV_Output_kW'] = optimal_dispatch['PV_to_Load_kW']
+                            if 'Wind_Output_kW' not in optimal_dispatch.columns:
+                                optimal_dispatch['Wind_Output_kW'] = 0
+                            if 'Hydro_Output_kW' not in optimal_dispatch.columns:
+                                optimal_dispatch['Hydro_Output_kW'] = 0
+                            if 'BESS_Charge_kW' not in optimal_dispatch.columns:
+                                optimal_dispatch['BESS_Charge_kW'] = optimal_dispatch.get('BESS_Charge_woeff_kW', 0)
+                            if 'BESS_Discharge_kW' not in optimal_dispatch.columns:
+                                optimal_dispatch['BESS_Discharge_kW'] = optimal_dispatch.get('BESS_Discharge_wieff_kW', 0)
+                            if 'Excess_kW' not in optimal_dispatch.columns:
+                                optimal_dispatch['Excess_kW'] = optimal_dispatch.get('Curtailment_kW', 0)
                         else:
-                            # Fallback to standard dispatch
                             optimal_dispatch = None
                     else:
                         degradation_results = None
