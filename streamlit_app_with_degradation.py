@@ -775,9 +775,9 @@ with st.sidebar:
             col1, col2 = st.columns(2)
             with col1:
                 pv_capex = st.number_input("CapEx ($/kW)", value=1000, step=10, key="pv_capex")
-                pv_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="pv_opex")
+                pv_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="pv_opex")
             with col2:
-                pv_lifetime = st.number_input("Lifetime (years)", value=25, step=1, key="pv_life")
+                pv_lifetime = st.number_input("Lifetime (years)", value=30, step=1, key="pv_life")
             
             # DEGRADATION CHECKBOX (IN COMPONENT TAB)
             st.markdown("---")
@@ -921,12 +921,12 @@ with st.sidebar:
             st.subheader("Storage Parameters")
             col1, col2 = st.columns(2)
             with col1:
-                bess_duration = st.number_input("Duration (hours)", value=4.0, min_value=0.5, step=0.5, key="bess_dur")
-                bess_min_soc = st.number_input("Min SOC (%)", value=20.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
+                bess_duration = st.number_input("Duration (hours)", value=2.0, min_value=0.5, step=0.5, key="bess_dur")
+                bess_min_soc = st.number_input("Min SOC (%)", value=10.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
                 bess_charge_eff = st.number_input("Charging Eff (%)", value=92.94, min_value=50.0, max_value=100.0, step=0.01, key="bess_charge_eff")
             with col2:
                 bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
-                bess_max_soc = st.number_input("Max SOC (%)", value=100.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
+                bess_max_soc = st.number_input("Max SOC (%)", value=90.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
                 bess_discharge_eff = st.number_input("Discharging Eff (%)", value=91.78, min_value=50.0, max_value=100.0, step=0.01, key="bess_discharge_eff")
             
             st.subheader("Financial Parameters")
@@ -1643,3 +1643,4 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
+
