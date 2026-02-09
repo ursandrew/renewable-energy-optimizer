@@ -300,14 +300,18 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
         # ================================
         # INITIALIZE BESS FOR THIS YEAR
         # ================================
-        # CRITICAL: For Year 1, start at 50% of degraded capacity
-        # For subsequent years, carry over final SOC from previous year
+        # CRITICAL: 
+        # - Year 1: Start at 50% of degraded capacity
+        # - Year 21: Reset to 50% (NEW BATTERY after replacement)
+        # - Other years: Carry over SOC from previous year
         if year == 1:
             soc_kwh = degraded_bess_capacity * 0.5  # Start at 50% for Year 1
+        elif year == 21:
+            # REPLACEMENT: Reset to 50% SOC with NEW battery
+            soc_kwh = degraded_bess_capacity * 0.5
+            print(f"🔋 RESET to 50% (NEW BATTERY), ", end='', flush=True)
         else:
-            # Carry over SOC from previous year, but adjust for capacity change
-            # If capacity decreased (degradation), maintain same percentage
-            # If capacity increased (replacement), maintain same percentage
+            # Carry over SOC from previous year, adjusted for capacity change
             if 'previous_soc_pct' in locals():
                 soc_kwh = degraded_bess_capacity * previous_soc_pct
             else:
