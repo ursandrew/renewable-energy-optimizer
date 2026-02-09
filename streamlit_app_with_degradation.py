@@ -532,18 +532,28 @@ def create_single_day_dispatch_profile(results):
             wind_col = 'Wind_Output_kW'
             hydro_col = 'Hydro_Output_kW'
         
-        dispatch_df['Day'] = dispatch_df['Hour'] // 24
+        # Check if Hour column is 0-23 repeated (new format) or continuous 0-8759 (old format)
+        if dispatch_df['Hour'].max() <= 23:
+            # New format: Hour is 0-23 repeated for each day
+            # Create a continuous hour index for day calculation
+            dispatch_df['Continuous_Hour'] = dispatch_df.index
+            dispatch_df['Day'] = dispatch_df['Continuous_Hour'] // 24
+        else:
+            # Old format: Hour is continuous 0-8759
+            dispatch_df['Day'] = dispatch_df['Hour'] // 24
+        
         daily_pv = dispatch_df.groupby('Day')[pv_col].sum()
         
         median_pv_day = daily_pv.sort_values().index[len(daily_pv) // 2]
         
-        start_hour = median_pv_day * 24
-        end_hour = start_hour + 24
+        # Get the day's data
+        day_profile = dispatch_df[dispatch_df['Day'] == median_pv_day].copy()
         
-        day_profile = dispatch_df[(dispatch_df['Hour'] >= start_hour) & 
-                                  (dispatch_df['Hour'] < end_hour)].copy()
-        
-        day_profile['Hour_of_Day'] = day_profile['Hour'] % 24
+        # Ensure Hour_of_Day is 0-23
+        if 'Hour' in day_profile.columns and day_profile['Hour'].max() <= 23:
+            day_profile['Hour_of_Day'] = day_profile['Hour']
+        else:
+            day_profile['Hour_of_Day'] = day_profile['Hour'] % 24
         
         day_profile['Load_MW'] = day_profile['Load_kW'] / 1000
         day_profile['PV_MW'] = day_profile[pv_col] / 1000
@@ -1328,14 +1338,15 @@ with tab2:
                         }
                         
                         # Run COMPLETE degradation analysis with hourly simulation
+                        # Set export_all_years=True to export ALL 25 years for verification
                         degradation_results = deg_module.run_degradation_analysis_complete(
                             optimal.to_dict(),
                             config_for_deg,
                             profiles,
                             apply_pv=apply_pv_degradation,
                             apply_bess=apply_bess_degradation,
-                            years_to_export=[1, 2, 5, 10, 15, 20, 25], 
-                            export_all_years=True
+                            years_to_export=[1, 2, 5, 10, 15, 20, 25],  # Selected years
+                            export_all_years=False  # Change to True to export all 25 years
                         )
                         
                         progress_bar.progress(90)
@@ -1683,4 +1694,3 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
-
