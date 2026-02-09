@@ -456,6 +456,24 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
         else:
             previous_soc_pct = 0.5
         
+        # For Year 1, also create a dispatch dataframe with expected column names
+        # for electrical metrics calculation
+        if year == 1 and store_hourly:
+            # Create a version with column names expected by calculate_electrical_metrics
+            display_dispatch = pd.DataFrame(hourly_data).copy()
+            
+            # Add columns expected by base module
+            display_dispatch['PV_Output_kW'] = display_dispatch['PV_to_Load_kW']
+            display_dispatch['Wind_Output_kW'] = 0  # No wind in degradation analysis
+            display_dispatch['Hydro_Output_kW'] = 0  # No hydro in degradation analysis
+            display_dispatch['Hydro_Active'] = 0
+            display_dispatch['BESS_Charge_kW'] = display_dispatch['BESS_Charge_woeff_kW']
+            display_dispatch['BESS_Discharge_kW'] = display_dispatch['BESS_Discharge_wieff_kW']
+            display_dispatch['Excess_kW'] = display_dispatch['Curtailment_kW']
+            
+            # Store for use in electrical metrics calculation
+            year_1_dispatch_for_metrics = display_dispatch
+        
         # Calculate yearly metrics
         unmet_pct = (year_unmet / year_load * 100) if year_load > 0 else 0
         
@@ -517,9 +535,13 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
     print(f"\nHourly Data Exported for Years: {years_to_export_list}")
     print("="*80 + "\n")
     
+    # Return Year 1 dispatch with proper column names for electrical metrics
+    year_1_for_metrics = year_1_dispatch_for_metrics if 'year_1_dispatch_for_metrics' in locals() else None
+    
     return {
         'yearly_summary': pd.DataFrame(yearly_results),
         'hourly_dispatch': hourly_results_by_year,
+        'year_1_dispatch_for_metrics': year_1_for_metrics,  # NEW: For electrical metrics calculation
         'npc_year1': npc_y1,
         'npc_25year': npc_25y,
         'replacement_cost_pv': replacement_cost_pv,
