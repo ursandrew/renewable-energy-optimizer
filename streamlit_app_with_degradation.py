@@ -1334,7 +1334,8 @@ with tab2:
                             profiles,
                             apply_pv=apply_pv_degradation,
                             apply_bess=apply_bess_degradation,
-                            years_to_export=[1, 2, 5, 10, 15, 20, 25]
+                            years_to_export=[1, 2, 5, 10, 15, 20, 25], 
+                            export_all_years=True
                         )
                         
                         progress_bar.progress(90)
@@ -1682,3 +1683,4 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
+
