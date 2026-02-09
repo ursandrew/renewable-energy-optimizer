@@ -3,15 +3,21 @@ DEGRADATION ANALYSIS MODULE FOR STREAMLIT - FIXED VERSION
 ==========================================================
 Full degradation engine for PV + BESS systems with COMPLETE hourly simulation
 
-FIXES:
-1. Now runs FULL hourly dispatch for each year (not just yearly summary)
-2. Applies Year 1 degradation from the start (94.46% BESS retention)
-3. Includes efficiency degradation retention factors
-4. Generates hourly dispatch sheets for selected years
-5. Proper BESS SOC initialization with degraded capacity
+FIXES IN THIS VERSION:
+1. Hour numbering: 0-23 for each year (not continuous 0-8759)
+2. BESS SOC carryover: Maintains SOC from year to year (not reset to 50%)
+3. Column order: Matches Anaconda output exactly
+4. Proper degradation application from Year 1
+
+IMPORTANT NOTES:
+- Capacity Factor: This is based on actual energy produced vs nameplate capacity
+  Low CF (~6%) is normal when BESS stores excess PV for later use
+  High unmet load means PV+BESS can't meet demand, not that PV isn't producing
+- BESS SOC: Starts at 50% for Year 1, then carries over year-to-year
+- Degradation: Applied from Year 1 (94.46% retention = 5.54% degradation)
 
 Author: SJ
-Version: 3.0 - Complete Hourly Simulation
+Version: 3.1 - Fixed Hour Numbering, SOC Carryover, Column Order
 """
 
 import pandas as pd
@@ -126,7 +132,8 @@ def grid_search_optimize_hydro(config, grid_config, solar, wind, hydro, bess,
 
 def run_degradation_analysis_complete(optimal_row, config_params, profiles, 
                                       apply_pv=True, apply_bess=True,
-                                      years_to_export=[1, 2, 5, 10, 15, 20, 25]):
+                                      years_to_export=[1, 2, 5, 10, 15, 20, 25],
+                                      export_all_years=False):
     """
     Run COMPLETE 25-year degradation analysis with HOURLY dispatch simulation.
     
@@ -144,10 +151,17 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
         Apply BESS degradation
     years_to_export : list
         Which years to export hourly data (default: [1, 2, 5, 10, 15, 20, 25])
+    export_all_years : bool
+        If True, export all 25 years (overrides years_to_export)
     
     Returns:
     --------
     dict : Complete degradation analysis results with hourly dispatch
+    
+    IMPORTANT FIXES:
+    - Hour numbering: 0-23 for each year (not continuous)
+    - BESS SOC: Carries over from year to year (not reset to 50%)
+    - Column order: Matches Anaconda output exactly
     """
     
     print("\n" + "="*80)
@@ -217,6 +231,14 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
     print(f"  BESS Degradation: {'ENABLED' if apply_bess else 'DISABLED'}")
     print(f"\nSimulating {project_lifetime} years with {hours_per_year} hours per year...")
     
+    # Determine which years to export
+    if export_all_years:
+        years_to_export_list = list(range(1, min(project_lifetime + 1, 26)))
+        print(f"Exporting ALL {len(years_to_export_list)} years")
+    else:
+        years_to_export_list = years_to_export
+        print(f"Exporting selected years: {years_to_export_list}")
+    
     # Storage for results
     yearly_results = []
     hourly_results_by_year = {}
@@ -278,8 +300,18 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
         # ================================
         # INITIALIZE BESS FOR THIS YEAR
         # ================================
-        # CRITICAL: Use DEGRADED capacity for initial SOC
-        soc_kwh = degraded_bess_capacity * 0.5  # Start at 50% of degraded capacity
+        # CRITICAL: For Year 1, start at 50% of degraded capacity
+        # For subsequent years, carry over final SOC from previous year
+        if year == 1:
+            soc_kwh = degraded_bess_capacity * 0.5  # Start at 50% for Year 1
+        else:
+            # Carry over SOC from previous year, but adjust for capacity change
+            # If capacity decreased (degradation), maintain same percentage
+            # If capacity increased (replacement), maintain same percentage
+            if 'previous_soc_pct' in locals():
+                soc_kwh = degraded_bess_capacity * previous_soc_pct
+            else:
+                soc_kwh = degraded_bess_capacity * 0.5  # Fallback
         
         # Yearly accumulators
         year_pv_gen = 0
@@ -296,7 +328,7 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
         year_curtailment = 0
         
         # Store hourly data for selected years
-        if year in years_to_export:
+        if year in years_to_export_list:
             hourly_data = []
             store_hourly = True
         else:
@@ -396,35 +428,33 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
             
             # Store hourly data if this year is selected for export
             if store_hourly:
+                # Match Anaconda column order exactly
                 hourly_data.append({
-                    'Hour': h,
+                    'Hour': h % 24,  # Reset to 0-23 for each day
                     'Load_kW': load_h,
-                    'PV_Output_kW': pv_to_load,
-                    'Wind_Output_kW': wind_to_load,
-                    'Hydro_Output_kW': hydro_to_load,
-                    'Hydro_Active': 1 if hydro_available > 0 else 0,
-                    'BESS_Charge_kW': bess_charge_woeff,
-                    'BESS_Discharge_kW': bess_discharge_wieff,
-                    'BESS_SOC_kWh': soc_kwh,
-                    'Unmet_Load_kW': unmet,
-                    'Excess_kW': curtailment,
                     'PV_Available_kW': pv_available,
-                    'Wind_Available_kW': wind_available,
-                    'Hydro_Available_kW': hydro_available,
                     'PV_to_Load_kW': pv_to_load,
                     'PV_Excess_kW': pv_excess,
                     'BESS_Charge_woeff_kW': bess_charge_woeff,
                     'BESS_Charge_wieff_kW': bess_charge_wieff,
                     'BESS_Discharge_woeff_kW': bess_discharge_woeff,
                     'BESS_Discharge_wieff_kW': bess_discharge_wieff,
+                    'BESS_SOC_kWh': soc_kwh,
                     'BESS_SOC_pct': (soc_kwh / degraded_bess_capacity * 100) if degraded_bess_capacity > 0 else 0,
-                    'Curtailment_kW': curtailment
+                    'Curtailment_kW': curtailment,
+                    'Unmet_Load_kW': unmet
                 })
         
         # Store hourly results for this year
         if store_hourly:
             hourly_results_by_year[f'year_{year}'] = pd.DataFrame(hourly_data)
             print(f"Hourly data stored", end='', flush=True)
+        
+        # Store final SOC percentage for carryover to next year
+        if degraded_bess_capacity > 0:
+            previous_soc_pct = soc_kwh / degraded_bess_capacity
+        else:
+            previous_soc_pct = 0.5
         
         # Calculate yearly metrics
         unmet_pct = (year_unmet / year_load * 100) if year_load > 0 else 0
@@ -484,7 +514,7 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
     print(f"\nLCOE Summary:")
     print(f"  Year 1 LCOE: ${lcoe_y1:.2f}/MWh")
     print(f"  25-Year LCOE: ${lcoe_25y:.2f}/MWh")
-    print(f"\nHourly Data Exported for Years: {years_to_export}")
+    print(f"\nHourly Data Exported for Years: {years_to_export_list}")
     print("="*80 + "\n")
     
     return {
@@ -501,7 +531,7 @@ def run_degradation_analysis_complete(optimal_row, config_params, profiles,
             'pv': apply_pv,
             'bess': apply_bess
         },
-        'years_exported': years_to_export
+        'years_exported': years_to_export_list
     }
 
 
