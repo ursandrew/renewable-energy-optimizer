@@ -508,8 +508,32 @@ def create_single_day_dispatch_profile(results):
     if 'optimal_dispatch' in results:
         dispatch_df = results['optimal_dispatch'].copy()
         
+        # Check which column format we have
+        if 'PV_Output_kW' in dispatch_df.columns:
+            # Standard format (from base optimization)
+            pv_col = 'PV_Output_kW'
+            wind_col = 'Wind_Output_kW'
+            hydro_col = 'Hydro_Output_kW'
+        elif 'PV_to_Load_kW' in dispatch_df.columns:
+            # Anaconda format (from degradation module)
+            # Map to expected columns
+            if 'PV_to_Load_kW' in dispatch_df.columns and 'PV_Output_kW' not in dispatch_df.columns:
+                dispatch_df['PV_Output_kW'] = dispatch_df['PV_to_Load_kW']
+            if 'Wind_Output_kW' not in dispatch_df.columns:
+                dispatch_df['Wind_Output_kW'] = 0
+            if 'Hydro_Output_kW' not in dispatch_df.columns:
+                dispatch_df['Hydro_Output_kW'] = 0
+            pv_col = 'PV_Output_kW'
+            wind_col = 'Wind_Output_kW'
+            hydro_col = 'Hydro_Output_kW'
+        else:
+            # Fallback
+            pv_col = 'PV_Output_kW'
+            wind_col = 'Wind_Output_kW'
+            hydro_col = 'Hydro_Output_kW'
+        
         dispatch_df['Day'] = dispatch_df['Hour'] // 24
-        daily_pv = dispatch_df.groupby('Day')['PV_Output_kW'].sum()
+        daily_pv = dispatch_df.groupby('Day')[pv_col].sum()
         
         median_pv_day = daily_pv.sort_values().index[len(daily_pv) // 2]
         
@@ -522,9 +546,9 @@ def create_single_day_dispatch_profile(results):
         day_profile['Hour_of_Day'] = day_profile['Hour'] % 24
         
         day_profile['Load_MW'] = day_profile['Load_kW'] / 1000
-        day_profile['PV_MW'] = day_profile['PV_Output_kW'] / 1000
-        day_profile['Wind_MW'] = day_profile['Wind_Output_kW'] / 1000
-        day_profile['Hydro_MW'] = day_profile['Hydro_Output_kW'] / 1000
+        day_profile['PV_MW'] = day_profile[pv_col] / 1000
+        day_profile['Wind_MW'] = day_profile[wind_col] / 1000
+        day_profile['Hydro_MW'] = day_profile[hydro_col] / 1000
         
         bess_capacity_kwh = results.get('bess_energy', 1) * 1000
         if bess_capacity_kwh > 0:
@@ -775,9 +799,9 @@ with st.sidebar:
             col1, col2 = st.columns(2)
             with col1:
                 pv_capex = st.number_input("CapEx ($/kW)", value=1000, step=10, key="pv_capex")
-                pv_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="pv_opex")
+                pv_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="pv_opex")
             with col2:
-                pv_lifetime = st.number_input("Lifetime (years)", value=30, step=1, key="pv_life")
+                pv_lifetime = st.number_input("Lifetime (years)", value=25, step=1, key="pv_life")
             
             # DEGRADATION CHECKBOX (IN COMPONENT TAB)
             st.markdown("---")
@@ -921,12 +945,12 @@ with st.sidebar:
             st.subheader("Storage Parameters")
             col1, col2 = st.columns(2)
             with col1:
-                bess_duration = st.number_input("Duration (hours)", value=2.0, min_value=0.5, step=0.5, key="bess_dur")
-                bess_min_soc = st.number_input("Min SOC (%)", value=10.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
+                bess_duration = st.number_input("Duration (hours)", value=4.0, min_value=0.5, step=0.5, key="bess_dur")
+                bess_min_soc = st.number_input("Min SOC (%)", value=20.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
                 bess_charge_eff = st.number_input("Charging Eff (%)", value=92.94, min_value=50.0, max_value=100.0, step=0.01, key="bess_charge_eff")
             with col2:
                 bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
-                bess_max_soc = st.number_input("Max SOC (%)", value=90.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
+                bess_max_soc = st.number_input("Max SOC (%)", value=100.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
                 bess_discharge_eff = st.number_input("Discharging Eff (%)", value=91.78, min_value=50.0, max_value=100.0, step=0.01, key="bess_discharge_eff")
             
             st.subheader("Financial Parameters")
@@ -1310,25 +1334,14 @@ with tab2:
                             profiles,
                             apply_pv=apply_pv_degradation,
                             apply_bess=apply_bess_degradation,
-                            years_to_export=[1, 2, 5, 10, 15, 20, 25],
-                            export_all_years=True
+                            years_to_export=[1, 2, 5, 10, 15, 20, 25]
                         )
                         
                         progress_bar.progress(90)
                         
                         # Use Year 1 hourly dispatch from degradation analysis for display
-
                         if 'year_1' in degradation_results['hourly_dispatch']:
-                            optimal_dispatch_base = degradation_results['hourly_dispatch']['year_1'].copy()
-                            # Add columns expected by calculate_electrical_metrics
-                            optimal_dispatch = optimal_dispatch_base.copy()
-                            optimal_dispatch['PV_Output_kW'] = optimal_dispatch_base['PV_to_Load_kW']
-                            optimal_dispatch['Wind_Output_kW'] = 0
-                            optimal_dispatch['Hydro_Output_kW'] = 0
-                            optimal_dispatch['Hydro_Active'] = 0
-                            optimal_dispatch['BESS_Charge_kW'] = optimal_dispatch_base['BESS_Charge_woeff_kW']
-                            optimal_dispatch['BESS_Discharge_kW'] = optimal_dispatch_base['BESS_Discharge_wieff_kW']
-                            optimal_dispatch['Excess_kW'] = optimal_dispatch_base['Curtailment_kW']
+                            optimal_dispatch = degradation_results['hourly_dispatch']['year_1']
                         else:
                             # Fallback to standard dispatch
                             optimal_dispatch = None
@@ -1654,6 +1667,3 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
-
-
-
