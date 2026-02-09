@@ -1316,8 +1316,18 @@ with tab2:
                         progress_bar.progress(90)
                         
                         # Use Year 1 hourly dispatch from degradation analysis for display
+
                         if 'year_1' in degradation_results['hourly_dispatch']:
-                            optimal_dispatch = degradation_results['hourly_dispatch']['year_1']
+                            optimal_dispatch_base = degradation_results['hourly_dispatch']['year_1'].copy()
+                            # Add columns expected by calculate_electrical_metrics
+                            optimal_dispatch = optimal_dispatch_base.copy()
+                            optimal_dispatch['PV_Output_kW'] = optimal_dispatch_base['PV_to_Load_kW']
+                            optimal_dispatch['Wind_Output_kW'] = 0
+                            optimal_dispatch['Hydro_Output_kW'] = 0
+                            optimal_dispatch['Hydro_Active'] = 0
+                            optimal_dispatch['BESS_Charge_kW'] = optimal_dispatch_base['BESS_Charge_woeff_kW']
+                            optimal_dispatch['BESS_Discharge_kW'] = optimal_dispatch_base['BESS_Discharge_wieff_kW']
+                            optimal_dispatch['Excess_kW'] = optimal_dispatch_base['Curtailment_kW']
                         else:
                             # Fallback to standard dispatch
                             optimal_dispatch = None
