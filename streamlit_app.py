@@ -504,26 +504,6 @@ def create_single_day_dispatch_profile(results):
         hovertemplate='Hour %{x}<br>Wind: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
-    # Add BESS discharge (positive contribution to supply)
-    fig.add_trace(go.Scatter(
-        x=day_profile['Hour_of_Day'],
-        y=day_profile['BESS_Discharge_MW'],
-        name='BESS Discharge',
-        mode='lines',
-        line=dict(width=2, color='rgba(251, 128, 114, 0.8)', dash='dot'),
-        hovertemplate='Hour %{x}<br>BESS Discharge: %{y:.2f} MW<extra></extra>'
-    ), secondary_y=False)
-    
-    # Add BESS charging (negative - shown as separate line below zero)
-    fig.add_trace(go.Scatter(
-        x=day_profile['Hour_of_Day'],
-        y=-day_profile['BESS_Charge_MW'],
-        name='BESS Charge',
-        mode='lines',
-        line=dict(width=2, color='rgba(251, 128, 114, 0.5)', dash='dash'),
-        hovertemplate='Hour %{x}<br>BESS Charge: %{y:.2f} MW<extra></extra>'
-    ), secondary_y=False)
-    
     # Add load as a line
     fig.add_trace(go.Scatter(
         x=day_profile['Hour_of_Day'],
@@ -1289,4 +1269,5 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
 
