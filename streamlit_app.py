@@ -448,8 +448,6 @@ def create_single_day_dispatch_profile(results):
         day_profile['PV_MW'] = day_profile['PV_Output_kW'] / 1000
         day_profile['Wind_MW'] = day_profile['Wind_Output_kW'] / 1000
         day_profile['Hydro_MW'] = day_profile['Hydro_Output_kW'] / 1000
-        day_profile['BESS_Charge_MW'] = day_profile['BESS_Charge_kW'] / 1000
-        day_profile['BESS_Discharge_MW'] = day_profile['BESS_Discharge_kW'] / 1000
         
         # Calculate BESS SOC percentage
         bess_capacity_kwh = results.get('bess_energy', 1) * 1000
@@ -1291,3 +1289,4 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v3.1 | Professional NPC Analysis</p></div>', unsafe_allow_html=True)
+
