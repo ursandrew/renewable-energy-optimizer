@@ -507,75 +507,92 @@ def create_single_day_dispatch_profile(results):
     """Create dispatch profile for a SINGLE REPRESENTATIVE DAY."""
     if 'optimal_dispatch' in results:
         dispatch_df = results['optimal_dispatch'].copy()
-        
-        # Check which column format we have
-        if 'PV_Output_kW' in dispatch_df.columns:
-            # Standard format (from base optimization)
-            pv_col = 'PV_Output_kW'
-            wind_col = 'Wind_Output_kW'
-            hydro_col = 'Hydro_Output_kW'
+
+        # ─────────────────────────────────────────────────────────────────────
+        # COLUMN DETECTION
+        # We need THREE things:
+        #   1. pv_available_col  → TOTAL PV generated (for the area fill)
+        #   2. wind_col / hydro_col → other generation
+        #   3. day-selection col  → use AVAILABLE PV to find median day
+        # ─────────────────────────────────────────────────────────────────────
+        if 'PV_Available_kW' in dispatch_df.columns:
+            # Degradation/Anaconda format  ← your current output
+            pv_available_col = 'PV_Available_kW'
+            wind_col  = 'Wind_Output_kW'  if 'Wind_Output_kW'  in dispatch_df.columns else None
+            hydro_col = 'Hydro_Output_kW' if 'Hydro_Output_kW' in dispatch_df.columns else None
+
+        elif 'PV_Output_kW' in dispatch_df.columns:
+            # Standard base-optimisation format
+            pv_available_col = 'PV_Output_kW'
+            wind_col  = 'Wind_Output_kW'  if 'Wind_Output_kW'  in dispatch_df.columns else None
+            hydro_col = 'Hydro_Output_kW' if 'Hydro_Output_kW' in dispatch_df.columns else None
+
         elif 'PV_to_Load_kW' in dispatch_df.columns:
-            # Anaconda format (from degradation module)
-            # Map to expected columns
-            if 'PV_to_Load_kW' in dispatch_df.columns and 'PV_Output_kW' not in dispatch_df.columns:
-                dispatch_df['PV_Output_kW'] = dispatch_df['PV_to_Load_kW']
-            if 'Wind_Output_kW' not in dispatch_df.columns:
-                dispatch_df['Wind_Output_kW'] = 0
-            if 'Hydro_Output_kW' not in dispatch_df.columns:
-                dispatch_df['Hydro_Output_kW'] = 0
-            pv_col = 'PV_Output_kW'
-            wind_col = 'Wind_Output_kW'
-            hydro_col = 'Hydro_Output_kW'
+            # Fallback: only PV_to_Load available (less accurate but won't crash)
+            pv_available_col = 'PV_to_Load_kW'
+            wind_col  = None
+            hydro_col = None
         else:
-            # Fallback
-            pv_col = 'PV_Output_kW'
-            wind_col = 'Wind_Output_kW'
-            hydro_col = 'Hydro_Output_kW'
-        
-        # Check if Hour column is 0-23 repeated (new format) or continuous 0-8759 (old format)
+            pv_available_col = None
+            wind_col  = None
+            hydro_col = None
+
+        # Fill missing wind/hydro with zeros
+        if wind_col is None:
+            dispatch_df['_wind_zero'] = 0
+            wind_col = '_wind_zero'
+        if hydro_col is None:
+            dispatch_df['_hydro_zero'] = 0
+            hydro_col = '_hydro_zero'
+        if pv_available_col is None:
+            dispatch_df['_pv_zero'] = 0
+            pv_available_col = '_pv_zero'
+
+        # ─────────────────────────────────────────────────────────────────────
+        # DAY DETECTION
+        # Hour column is 0-23 repeated (new format) or continuous 0-8759
+        # ─────────────────────────────────────────────────────────────────────
         if dispatch_df['Hour'].max() <= 23:
-            # New format: Hour is 0-23 repeated for each day
-            # Create a continuous hour index for day calculation
             dispatch_df['Continuous_Hour'] = dispatch_df.index
             dispatch_df['Day'] = dispatch_df['Continuous_Hour'] // 24
         else:
-            # Old format: Hour is continuous 0-8759
             dispatch_df['Day'] = dispatch_df['Hour'] // 24
-        
-        daily_pv = dispatch_df.groupby('Day')[pv_col].sum()
-        
+
+        # Pick the MEDIAN PV day using AVAILABLE PV (bell-curve shape)
+        daily_pv = dispatch_df.groupby('Day')[pv_available_col].sum()
         median_pv_day = daily_pv.sort_values().index[len(daily_pv) // 2]
-        
-        # Get the day's data
+
+        # Extract that day
         day_profile = dispatch_df[dispatch_df['Day'] == median_pv_day].copy()
-        
-        # Ensure Hour_of_Day is 0-23
-        if 'Hour' in day_profile.columns and day_profile['Hour'].max() <= 23:
+
+        # Hour of day axis
+        if day_profile['Hour'].max() <= 23:
             day_profile['Hour_of_Day'] = day_profile['Hour']
         else:
             day_profile['Hour_of_Day'] = day_profile['Hour'] % 24
-        
-        day_profile['Load_MW'] = day_profile['Load_kW'] / 1000
-        day_profile['PV_MW'] = day_profile[pv_col] / 1000
-        day_profile['Wind_MW'] = day_profile[wind_col] / 1000
-        day_profile['Hydro_MW'] = day_profile[hydro_col] / 1000
-        
+
+        # Convert to MW
+        day_profile['Load_MW']  = day_profile['Load_kW']          / 1000
+        day_profile['PV_MW']    = day_profile[pv_available_col]   / 1000   # ← AVAILABLE, not to-load
+        day_profile['Wind_MW']  = day_profile[wind_col]           / 1000
+        day_profile['Hydro_MW'] = day_profile[hydro_col]          / 1000
+
+        # BESS SOC
         bess_capacity_kwh = results.get('bess_energy', 1) * 1000
-        if bess_capacity_kwh > 0:
-            day_profile['BESS_SOC_%'] = (day_profile['BESS_SOC_kWh'] / bess_capacity_kwh) * 100
-            day_profile['BESS_SOC_%'] = day_profile['BESS_SOC_%'].clip(0, 100)
+        if bess_capacity_kwh > 0 and 'BESS_SOC_kWh' in day_profile.columns:
+            day_profile['BESS_SOC_%'] = (day_profile['BESS_SOC_kWh'] / bess_capacity_kwh * 100).clip(0, 100)
         else:
             day_profile['BESS_SOC_%'] = 50
-        
+
     else:
         hours = list(range(24))
         day_profile = pd.DataFrame({
             'Hour_of_Day': hours,
-            'Load_MW': [5] * 24,
-            'PV_MW': [0] * 24,
-            'Wind_MW': [0] * 24,
-            'Hydro_MW': [0] * 24,
-            'BESS_SOC_%': [50] * 24
+            'Load_MW':    [0.5] * 24,
+            'PV_MW':      [0]   * 24,
+            'Wind_MW':    [0]   * 24,
+            'Hydro_MW':   [0]   * 24,
+            'BESS_SOC_%': [50]  * 24,
         })
     
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -809,9 +826,9 @@ with st.sidebar:
             col1, col2 = st.columns(2)
             with col1:
                 pv_capex = st.number_input("CapEx ($/kW)", value=1000, step=10, key="pv_capex")
-                pv_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="pv_opex")
+                pv_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="pv_opex")
             with col2:
-                pv_lifetime = st.number_input("Lifetime (years)", value=30, step=1, key="pv_life")
+                pv_lifetime = st.number_input("Lifetime (years)", value=25, step=1, key="pv_life")
             
             # DEGRADATION CHECKBOX (IN COMPONENT TAB)
             st.markdown("---")
@@ -955,12 +972,12 @@ with st.sidebar:
             st.subheader("Storage Parameters")
             col1, col2 = st.columns(2)
             with col1:
-                bess_duration = st.number_input("Duration (hours)", value=2.0, min_value=0.5, step=0.5, key="bess_dur")
-                bess_min_soc = st.number_input("Min SOC (%)", value=10.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
+                bess_duration = st.number_input("Duration (hours)", value=4.0, min_value=0.5, step=0.5, key="bess_dur")
+                bess_min_soc = st.number_input("Min SOC (%)", value=20.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
                 bess_charge_eff = st.number_input("Charging Eff (%)", value=92.94, min_value=50.0, max_value=100.0, step=0.01, key="bess_charge_eff")
             with col2:
-                bess_lifetime = st.number_input("Lifetime (years)", value=20, step=1, key="bess_life")
-                bess_max_soc = st.number_input("Max SOC (%)", value=90.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
+                bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
+                bess_max_soc = st.number_input("Max SOC (%)", value=100.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
                 bess_discharge_eff = st.number_input("Discharging Eff (%)", value=91.78, min_value=50.0, max_value=100.0, step=0.01, key="bess_discharge_eff")
             
             st.subheader("Financial Parameters")
@@ -1346,7 +1363,7 @@ with tab2:
                             apply_pv=apply_pv_degradation,
                             apply_bess=apply_bess_degradation,
                             years_to_export=[1, 2, 5, 10, 15, 20, 25],  # Selected years
-                            export_all_years=True  # Change to True to export all 25 years
+                            export_all_years=False  # Change to True to export all 25 years
                         )
                         
                         progress_bar.progress(90)
@@ -1694,5 +1711,3 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
-
-
