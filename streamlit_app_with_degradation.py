@@ -508,15 +508,15 @@ def create_single_day_dispatch_profile(results):
     if 'optimal_dispatch' in results:
         dispatch_df = results['optimal_dispatch'].copy()
 
-        # ─────────────────────────────────────────────────────────────────────
+        # -----------------------------------------------------------------
         # COLUMN DETECTION
         # We need THREE things:
-        #   1. pv_available_col  → TOTAL PV generated (for the area fill)
-        #   2. wind_col / hydro_col → other generation
-        #   3. day-selection col  → use AVAILABLE PV to find median day
-        # ─────────────────────────────────────────────────────────────────────
+        #   1. pv_available_col  - TOTAL PV generated (for the area fill)
+        #   2. wind_col / hydro_col - other generation
+        #   3. day-selection col  - use AVAILABLE PV to find median day
+        # -----------------------------------------------------------------
         if 'PV_Available_kW' in dispatch_df.columns:
-            # Degradation/Anaconda format  ← your current output
+            # Degradation/Anaconda format - your current output
             pv_available_col = 'PV_Available_kW'
             wind_col  = 'Wind_Output_kW'  if 'Wind_Output_kW'  in dispatch_df.columns else None
             hydro_col = 'Hydro_Output_kW' if 'Hydro_Output_kW' in dispatch_df.columns else None
@@ -548,10 +548,10 @@ def create_single_day_dispatch_profile(results):
             dispatch_df['_pv_zero'] = 0
             pv_available_col = '_pv_zero'
 
-        # ─────────────────────────────────────────────────────────────────────
+        # -----------------------------------------------------------------
         # DAY DETECTION
         # Hour column is 0-23 repeated (new format) or continuous 0-8759
-        # ─────────────────────────────────────────────────────────────────────
+        # -----------------------------------------------------------------
         if dispatch_df['Hour'].max() <= 23:
             dispatch_df['Continuous_Hour'] = dispatch_df.index
             dispatch_df['Day'] = dispatch_df['Continuous_Hour'] // 24
@@ -573,7 +573,7 @@ def create_single_day_dispatch_profile(results):
 
         # Convert to MW
         day_profile['Load_MW']  = day_profile['Load_kW']          / 1000
-        day_profile['PV_MW']    = day_profile[pv_available_col]   / 1000   # ← AVAILABLE, not to-load
+        day_profile['PV_MW']    = day_profile[pv_available_col]   / 1000   # AVAILABLE total PV, not PV-to-load
         day_profile['Wind_MW']  = day_profile[wind_col]           / 1000
         day_profile['Hydro_MW'] = day_profile[hydro_col]          / 1000
 
@@ -1688,25 +1688,36 @@ with tab3:
         # Download
         st.subheader("📥 Download Results")
         
-        # Get degradation results if available
-        degradation_results = results.get('degradation_results', None)
-        
-        # Use the export function with degradation support
-        excel_output = export_results_industry_format(
-            results, results['results_df'], results['optimal_row'], 
-            results['config_params'], degradation_results
-        )
-        
+        # Use a session state key to only generate Excel when button is clicked
+        # This prevents the huge Excel file being rebuilt on every page render
         col1, col2, col3 = st.columns([2, 1, 2])
         with col2:
-            st.download_button(
-                label="📥 Download Excel",
-                data=excel_output,
-                file_name=f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                type="primary"
-            )
+            if st.button("📥 Prepare Excel Download", type="primary", use_container_width=True):
+                with st.spinner("Building Excel report..."):
+                    try:
+                        degradation_results = results.get('degradation_results', None)
+                        excel_output = export_results_industry_format(
+                            results, results['results_df'], results['optimal_row'],
+                            results['config_params'], degradation_results
+                        )
+                        st.session_state['excel_ready'] = excel_output
+                        st.session_state['excel_timestamp'] = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        st.success("✅ Excel ready! Click Download below.")
+                    except Exception as e:
+                        st.error(f"Export error: {str(e)}")
+
+        # Show download button only after Excel is prepared
+        if 'excel_ready' in st.session_state and st.session_state['excel_ready'] is not None:
+            col1b, col2b, col3b = st.columns([2, 1, 2])
+            with col2b:
+                st.download_button(
+                    label="⬇️ Download Excel",
+                    data=st.session_state['excel_ready'],
+                    file_name=f"results_{st.session_state.get('excel_timestamp', 'output')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="secondary"
+                )
 
 # Footer
 st.markdown("---")
