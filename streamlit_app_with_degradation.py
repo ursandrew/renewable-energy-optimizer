@@ -758,13 +758,26 @@ def create_emissions_table(optimal_row, results):
 # ==============================================================================
 
 st.set_page_config(
-    page_title="RE Optimization Tool",
-    page_icon="🌞",
+    page_title="Energy Modeling Optimizer",
+    page_icon="https://img.icons8.com/color/48/lightning-bolt.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.markdown('<p style="font-size:2.5rem;font-weight:bold;color:#1f77b4;text-align:center">🌞 Renewable Energy Optimization Tool</p>', unsafe_allow_html=True)
+# SJ logo as inline SVG + new tool name
+st.markdown("""
+<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:4px">
+    <svg width="52" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">
+        <rect width="52" height="52" rx="8" fill="#0047AB"/>
+        <text x="26" y="36" font-family="Arial,sans-serif" font-size="22"
+              font-weight="bold" fill="white" text-anchor="middle">SJ</text>
+        <circle cx="38" cy="13" r="5" fill="#E63946"/>
+    </svg>
+    <p style="font-size:2.5rem;font-weight:bold;color:#1f77b4;margin:0">
+        Energy Modeling Optimizer
+    </p>
+</div>
+""", unsafe_allow_html=True)
 st.markdown("**Hybrid System Designer: PV + Wind + Hydro + Battery Storage + CCGT + Hydrogen**")
 st.markdown("---")
 
@@ -1084,7 +1097,7 @@ total_combinations = pv_options * wind_options * hydro_options * bess_options
 
 # TAB 1: HOME
 with tab1:
-    st.header("Welcome to the Renewable Energy Optimization Tool")
+    st.header("Welcome to the Energy Modeling Optimizer")
     st.markdown("""
     ### 🎯 Purpose
     Optimize hybrid renewable energy systems to minimize Net Present Cost while meeting reliability targets.
@@ -1721,4 +1734,4 @@ with tab3:
 
 # Footer
 st.markdown("---")
-st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center;color:#666"><p>Energy Modeling Optimizer v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
