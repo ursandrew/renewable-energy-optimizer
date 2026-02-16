@@ -291,7 +291,7 @@ def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
     
     # Create STANDARDIZED DataFrame (matches degradation format)
     results = pd.DataFrame({
-        'Hour': range(hours),
+        'Hour': [h % 24 for h in range(hours)],
         'Load_kW': load_profile,
         
         # PV breakdown
