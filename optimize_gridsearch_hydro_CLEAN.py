@@ -352,8 +352,8 @@ def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
     
     # RHS: Where energy went
     results['Energy_Balance_RHS_kW'] = (
-        results['Load_kW'] +                  
-        results['BESS_Charge_woeff_kW'] +     
+        (results['Load_kW'] - results['Unmet_Load_kW']) +  # ✅ Served load only
+        results['BESS_Charge_woeff_kW'] +
         results['Curtailment_kW']   
     )
     
