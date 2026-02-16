@@ -788,14 +788,14 @@ with st.sidebar:
             bess_max = 0.0
             bess_step = 1.0
             bess_duration = 4.0
-            bess_min_soc = 20
-            bess_max_soc = 100
-            bess_charge_eff = 95
-            bess_discharge_eff = 95
-            bess_lifetime = 15
-            bess_power_capex = 300
-            bess_energy_capex = 200
-            bess_opex = 2
+            bess_min_soc = 20.0
+            bess_max_soc = 100.0
+            bess_charge_eff = 95.0
+            bess_discharge_eff = 95.0
+            bess_lifetime = 15.0
+            bess_power_capex = 300.0
+            bess_energy_capex = 200.0
+            bess_opex = 2.0
         else:
             st.subheader("Power Range")
             col1, col2 = st.columns(2)
@@ -1391,4 +1391,5 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 CLEAN | Direct Python Architecture | Energy Balance Validated</p></div>', unsafe_allow_html=True)
+
 
