@@ -790,8 +790,8 @@ with st.sidebar:
             bess_duration = 4.0
             bess_min_soc = 20.0
             bess_max_soc = 100.0
-            bess_charge_eff = 95.0
-            bess_discharge_eff = 95.0
+            bess_charge_eff = 92.94
+            bess_discharge_eff = 91.78
             bess_lifetime = 15.0
             bess_power_capex = 300.0
             bess_energy_capex = 200.0
@@ -1391,6 +1391,7 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 CLEAN | Direct Python Architecture | Energy Balance Validated</p></div>', unsafe_allow_html=True)
+
 
 
 
