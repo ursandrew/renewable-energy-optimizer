@@ -549,14 +549,17 @@ def create_single_day_dispatch_profile(results):
     # Create figure
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
+    # Use fill='tozeroy' instead of stackgroup for non-stacked visualization
+    # Order: Bottom to top for visual layering
+    
     fig.add_trace(go.Scatter(
         x=day_profile['Hour_of_Day'],
         y=day_profile['Hydro_MW'],
         name='Hydro',
         mode='lines',
-        line=dict(width=0),
-        stackgroup='one',
-        fillcolor='rgba(141, 211, 199, 0.7)',
+        line=dict(width=0.5, color='rgba(141, 211, 199, 1)'),
+        fill='tozeroy',
+        fillcolor='rgba(141, 211, 199, 0.6)',
         hovertemplate='Hour %{x}<br>Hydro: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
@@ -565,9 +568,9 @@ def create_single_day_dispatch_profile(results):
         y=day_profile['PV_MW'],
         name='PV',
         mode='lines',
-        line=dict(width=0),
-        stackgroup='one',
-        fillcolor='rgba(253, 180, 98, 0.7)',
+        line=dict(width=0.5, color='rgba(253, 180, 98, 1)'),
+        fill='tozeroy',
+        fillcolor='rgba(253, 180, 98, 0.6)',
         hovertemplate='Hour %{x}<br>PV: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
@@ -576,9 +579,9 @@ def create_single_day_dispatch_profile(results):
         y=day_profile['Wind_MW'],
         name='Wind',
         mode='lines',
-        line=dict(width=0),
-        stackgroup='one',
-        fillcolor='rgba(128, 177, 211, 0.7)',
+        line=dict(width=0.5, color='rgba(128, 177, 211, 1)'),
+        fill='tozeroy',
+        fillcolor='rgba(128, 177, 211, 0.6)',
         hovertemplate='Hour %{x}<br>Wind: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
@@ -1220,91 +1223,6 @@ with tab3:
             st.markdown("**🔋 Battery**")
             st.metric("Power", f"{results['bess_power']:.2f} MW")
             st.metric("Energy", f"{results['bess_energy']:.2f} MWh")
-        
-        st.markdown("---")
-        
-        # ENERGY BALANCE VALIDATION
-        st.subheader("⚖️ Energy Balance Validation")
-        
-        if 'optimal_dispatch' in results:
-            validation = validate_energy_balance(results['optimal_dispatch'])
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if validation['energy_balance_passed']:
-                    st.success("✅ Energy Balance: PASSED")
-                else:
-                    st.error("❌ Energy Balance: FAILED")
-                st.metric("Max Error", f"{validation['max_balance_error_kw']:.6f} kW")
-            
-            with col2:
-                st.metric("Mean Error", f"{validation['mean_balance_error_kw']:.8f} kW")
-                st.metric("Hours with Error", validation['hours_with_error'])
-            
-            with col3:
-                if validation['bess_soc_valid']:
-                    st.success("✅ BESS SOC: VALID")
-                else:
-                    st.error("❌ BESS SOC: NEGATIVE")
-                st.metric("SOC Min", f"{validation['bess_soc_min_kwh']:.1f} kWh")
-            
-            # Annual energy summary
-            st.markdown("**Annual Energy Summary**")
-            
-            dispatch = results['optimal_dispatch']
-            
-            # Handle both column name formats
-            pv_col = 'PV_Available_kW' if 'PV_Available_kW' in dispatch.columns else 'PV_Output_kW'
-            
-            annual_summary = pd.DataFrame({
-                'Component': [
-                    'Total Generation',
-                    'PV Generation',
-                    'Wind Generation',
-                    'Hydro Generation',
-                    'Load Served',
-                    'Unmet Load',
-                    'BESS Charge (before eff)',
-                    'BESS Discharge (after eff)',
-                    'BESS Losses',
-                    'Curtailment',
-                    'Balance Error'
-                ],
-                'Energy (MWh/year)': [
-                    (dispatch.get(pv_col, 0).sum() + dispatch.get('Wind_Output_kW', 0).sum() + 
-                     dispatch.get('Hydro_Output_kW', 0).sum()) / 1000,
-                    dispatch.get(pv_col, 0).sum() / 1000,
-                    dispatch.get('Wind_Output_kW', 0).sum() / 1000,
-                    dispatch.get('Hydro_Output_kW', 0).sum() / 1000,
-                    dispatch['Load_kW'].sum() / 1000 - dispatch.get('Unmet_kW', dispatch.get('Unmet_Load_kW', 0)).sum() / 1000,
-                    dispatch.get('Unmet_kW', dispatch.get('Unmet_Load_kW', 0)).sum() / 1000,
-                    dispatch.get('BESS_Charge_woeff_kW', dispatch.get('BESS_Charge_kW', 0)).sum() / 1000,
-                    dispatch.get('BESS_Discharge_wieff_kW', dispatch.get('BESS_Discharge_kW', 0)).sum() / 1000,
-                    ((dispatch.get('BESS_Charge_woeff_kW', 0).sum() - dispatch.get('BESS_Charge_wieff_kW', 0).sum()) +
-                     (dispatch.get('BESS_Discharge_woeff_kW', 0).sum() - dispatch.get('BESS_Discharge_wieff_kW', 0).sum())) / 1000,
-                    dispatch.get('Excess_kW', dispatch.get('Curtailment_kW', 0)).sum() / 1000,
-                    dispatch.get('Energy_Balance_Error_kW', 0).sum() / 1000
-                ]
-            })
-            
-            st.dataframe(annual_summary, use_container_width=True, hide_index=True)
-            
-            # Sanity check
-            gen_total = annual_summary.loc[annual_summary['Component'] == 'Total Generation', 'Energy (MWh/year)'].values[0]
-            load_total = annual_summary.loc[annual_summary['Component'] == 'Load Served', 'Energy (MWh/year)'].values[0]
-            unmet_total = annual_summary.loc[annual_summary['Component'] == 'Unmet Load', 'Energy (MWh/year)'].values[0]
-            bess_charge_total = annual_summary.loc[annual_summary['Component'] == 'BESS Charge (before eff)', 'Energy (MWh/year)'].values[0]
-            losses_total = annual_summary.loc[annual_summary['Component'] == 'BESS Losses', 'Energy (MWh/year)'].values[0]
-            curtail_total = annual_summary.loc[annual_summary['Component'] == 'Curtailment', 'Energy (MWh/year)'].values[0]
-            
-            consumption_total = load_total + unmet_total + bess_charge_total + losses_total + curtail_total
-            balance_diff = abs(gen_total - consumption_total)
-            
-            if balance_diff < 1.0:
-                st.success(f"✅ **Annual Energy Balance Verified**: {balance_diff:.3f} MWh/year difference")
-            else:
-                st.warning(f"⚠️ **Annual Energy Balance**: {balance_diff:.3f} MWh/year difference")
         
         st.markdown("---")
         
