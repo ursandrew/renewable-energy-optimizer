@@ -484,8 +484,26 @@ def create_single_day_dispatch_profile(results):
     if 'optimal_dispatch' in results:
         dispatch_df = results['optimal_dispatch'].copy()
         
+        # Check if Hour_of_Day already exists (new format) or needs to be created
+        if 'Hour_of_Day' not in dispatch_df.columns:
+            # Old format: Hour might be 0-23 repeated, need to check
+            if dispatch_df['Hour'].max() <= 23:
+                # Hour is already 0-23, create absolute hour
+                dispatch_df['Absolute_Hour'] = dispatch_df.index
+                dispatch_df['Hour_of_Day'] = dispatch_df['Hour']
+            else:
+                # Hour is absolute (0-8759), create Hour_of_Day
+                dispatch_df['Absolute_Hour'] = dispatch_df['Hour']
+                dispatch_df['Hour_of_Day'] = dispatch_df['Hour'] % 24
+        else:
+            # New format: both columns exist
+            if 'Hour' in dispatch_df.columns and dispatch_df['Hour'].max() > 24:
+                dispatch_df['Absolute_Hour'] = dispatch_df['Hour']
+            else:
+                dispatch_df['Absolute_Hour'] = dispatch_df.index
+        
         # Pick a day with median PV production
-        dispatch_df['Day'] = dispatch_df['Hour'] // 24
+        dispatch_df['Day'] = dispatch_df['Absolute_Hour'] // 24  # ✅ Use Absolute_Hour
         
         # Use PV_Available_kW if present, otherwise PV_Output_kW
         pv_col = 'PV_Available_kW' if 'PV_Available_kW' in dispatch_df.columns else 'PV_Output_kW'
@@ -496,10 +514,10 @@ def create_single_day_dispatch_profile(results):
         start_hour = median_pv_day * 24
         end_hour = start_hour + 24
         
-        day_profile = dispatch_df[(dispatch_df['Hour'] >= start_hour) & 
-                                  (dispatch_df['Hour'] < end_hour)].copy()
+        day_profile = dispatch_df[(dispatch_df['Absolute_Hour'] >= start_hour) & 
+                                  (dispatch_df['Absolute_Hour'] < end_hour)].copy()
         
-        day_profile['Hour_of_Day'] = day_profile['Hour'] % 24
+        # Hour_of_Day already exists from above logic
         
         # Convert to MW (handle both formats)
         day_profile['Load_MW'] = day_profile['Load_kW'] / 1000
@@ -1391,11 +1409,3 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 CLEAN | Direct Python Architecture | Energy Balance Validated</p></div>', unsafe_allow_html=True)
-
-
-
-
-
-
-
-
