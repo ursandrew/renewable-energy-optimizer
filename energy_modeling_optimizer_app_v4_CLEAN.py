@@ -863,7 +863,7 @@ tab1, tab2, tab3 = st.tabs(["🏠 Home", "⚙️ Optimize", "📊 Results"])
 pv_options = int((pv_max - pv_min) / pv_step) + 1 if pv_step > 0 and enable_pv else 1
 wind_options = int((wind_max - wind_min) / wind_step) + 1 if wind_step > 0 and enable_wind else 1
 hydro_options = int((hydro_max - hydro_min) / hydro_step) + 1 if hydro_step > 0 and enable_hydro else 1
-bess_options = int((bess_max - bess_min) / bess_step) + 1 if bess_step > 0 and enable_bess else 1
+bess_options = float((bess_max - bess_min) / bess_step) + 1 if bess_step > 0 and enable_bess else 1
 total_combinations = pv_options * wind_options * hydro_options * bess_options
 
 # TAB 1: HOME
@@ -1391,5 +1391,6 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 CLEAN | Direct Python Architecture | Energy Balance Validated</p></div>', unsafe_allow_html=True)
+
 
 
