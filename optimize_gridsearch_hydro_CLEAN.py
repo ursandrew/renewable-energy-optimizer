@@ -343,11 +343,18 @@ def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
     
     # Energy balance check
     # LHS: Total generation
-    results['Energy_Balance_LHS_kW'] = (results['PV_Available_kW'] + results['Wind_Output_kW'] + results['Hydro_Output_kW'] + results['BESS_Discharge_woeff_kW']  
+    results['Energy_Balance_LHS_kW'] = (
+        results['PV_Available_kW'] + 
+        results['Wind_Output_kW'] + 
+        results['Hydro_Output_kW'] +
+        results['BESS_Discharge_wieff_kW']  
     )
     
     # RHS: Where energy went
-    results['Energy_Balance_RHS_kW'] = (results['Load_kW'] + results['BESS_Charge_woeff_kW'] + results['Curtailment_kW'] + results['BESS_Charge_Loss_kW'] + results['BESS_Discharge_Loss_kW']    
+    results['Energy_Balance_RHS_kW'] = (
+        results['Load_kW'] +                  
+        results['BESS_Charge_woeff_kW'] +     
+        results['Curtailment_kW']   
     )
     
     # Error (should be ~0)
