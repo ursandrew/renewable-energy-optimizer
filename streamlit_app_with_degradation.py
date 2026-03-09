@@ -669,47 +669,89 @@ with st.sidebar:
             )
             
             if apply_bess_degradation:
-                bess_chemistry = st.selectbox(
-                    "Battery Chemistry:",
-                    [
-                        "Lithium NMC (Standard)",
-                        "Lithium LFP (Long Life)",
-                        "Sodium-Ion (Emerging)",
-                        "Custom (Upload File)"
-                    ],
-                    help="Select battery chemistry or upload custom degradation curve",
-                    key="bess_chemistry"
+                # Efficiencies will be controlled by degradation curve
+                bess_charge_eff = None
+                bess_discharge_eff = None
+                
+                st.info("ℹ️ Efficiency values will be controlled by the degradation curve")
+                
+                # User uploads BESS degradation CSV file
+                st.markdown("**Upload BESS Degradation Curve:**")
+                
+                bess_deg_file = st.file_uploader(
+                    "Select BESS Degradation CSV File",
+                    type=['csv', 'xlsx'],
+                    help="Upload CSV with columns: Year, Capacity_Retention_%, Charging_Efficiency_%, Discharging_Efficiency_%",
+                    key="bess_deg_file"
                 )
                 
-                if bess_chemistry == "Custom (Upload File)":
-                    bess_deg_file = st.file_uploader(
-                        "Upload BESS Degradation Curve",
-                        type=['csv', 'xlsx'],
-                        help="Required columns: Year, Capacity_Retention_%, Charging_Efficiency_%, Discharging_Efficiency_%",
-                        key="bess_deg_file"
-                    )
+                if bess_deg_file:
+                    st.success(f"✓ Uploaded: {bess_deg_file.name}")
                     
-                    if bess_deg_file:
-                        st.success(f"✓ Uploaded: {bess_deg_file.name}")
-                    
-                    # Download template button
-                    st.download_button(
-                        label="📥 Download Template CSV",
-                        data=create_bess_degradation_template(),
-                        file_name="bess_degradation_template.csv",
-                        mime="text/csv",
-                        key="bess_template_download"
-                    )
+                    # Try to parse and show preview
+                    try:
+                        deg_data = parse_bess_degradation_file(bess_deg_file)
+                        if deg_data:
+                            st.info(f"""
+✓ Year 1:  {deg_data[1]['capacity']:.1f}% capacity | Charge: {deg_data[1]['charge_eff']:.2f}% | Discharge: {deg_data[1]['discharge_eff']:.2f}%
+✓ Year 10: {deg_data[10]['capacity']:.1f}% capacity | Charge: {deg_data[10]['charge_eff']:.2f}% | Discharge: {deg_data[10]['discharge_eff']:.2f}%
+✓ Year 25: {deg_data[25]['capacity']:.1f}% capacity | Charge: {deg_data[25]['charge_eff']:.2f}% | Discharge: {deg_data[25]['discharge_eff']:.2f}%
+                            """)
+                            # Reset file pointer for later use
+                            bess_deg_file.seek(0)
+                    except:
+                        pass
                 else:
-                    bess_deg_file = None
-                    # Show preview from preset
-                    if hasattr(opt_module, 'BESS_DEGRADATION_PRESETS'):
-                        preset_data = opt_module.BESS_DEGRADATION_PRESETS[bess_chemistry]
-                        st.info(f"""
-✓ Year 1:  {preset_data[1]['capacity']:.1f}% capacity retention
-✓ Year 10: {preset_data[10]['capacity']:.1f}% capacity retention  
-✓ Year 25: {preset_data[25]['capacity']:.1f}% capacity retention
-                        """)
+                    st.warning("⚠️ Please upload a BESS degradation CSV file to proceed")
+                
+                # Download preset template buttons
+                st.markdown("**Need a template? Download a preset:**")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    try:
+                        nmc_data = open('bess_degradation_lithium_nmc.csv', 'rb').read()
+                    except:
+                        nmc_data = create_bess_degradation_template()
+                    st.download_button(
+                        label="📥 Lithium NMC",
+                        data=nmc_data,
+                        file_name="bess_degradation_lithium_nmc.csv",
+                        mime="text/csv",
+                        key="bess_nmc_download",
+                        help="Standard Lithium NMC degradation curve"
+                    )
+                
+                with col2:
+                    try:
+                        lfp_data = open('bess_degradation_lithium_lfp.csv', 'rb').read()
+                    except:
+                        lfp_data = create_bess_degradation_template()
+                    st.download_button(
+                        label="📥 Lithium LFP",
+                        data=lfp_data,
+                        file_name="bess_degradation_lithium_lfp.csv",
+                        mime="text/csv",
+                        key="bess_lfp_download",
+                        help="Long-life Lithium LFP degradation curve"
+                    )
+                
+                with col3:
+                    try:
+                        sodi_data = open('bess_degradation_sodium_ion.csv', 'rb').read()
+                    except:
+                        sodi_data = create_bess_degradation_template()
+                    st.download_button(
+                        label="📥 Sodium-Ion",
+                        data=sodi_data,
+                        file_name="bess_degradation_sodium_ion.csv",
+                        mime="text/csv",
+                        key="bess_sodi_download",
+                        help="Emerging Sodium-Ion degradation curve"
+                    )
+                
+                bess_chemistry = "Custom (From CSV)"
+                
             else:
                 bess_chemistry = None
                 bess_deg_file = None
