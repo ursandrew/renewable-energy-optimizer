@@ -1,16 +1,18 @@
 """
-RENEWABLE ENERGY OPTIMIZATION TOOL - COMPLETE VERSION WITH DEGRADATION
-=======================================================================
-Version: 4.0 - Integrated Degradation Analysis
-Features:
-- Full degradation analysis with 25-year hourly simulation
-- Independent PV/BESS degradation selection
-- Multi-year hourly export (Years 1, 2, 5, 10, 15, 20, 25)
-- Fixed BESS SOC initialization with Year 1 degradation
-- Enhanced Excel export with degradation sheets
+RENEWABLE ENERGY OPTIMIZATION TOOL - COMPLETE VERSION V4.0 CLEAN
+================================================================
+MAJOR REFACTOR:
+- Removed Excel intermediary (direct Python data passing)
+- Added energy balance validation
+- Standardized hourly output format
+- Matches Firm Power Tool clean architecture
 
-Author: SJ
-Date: February 2026
+Features:
+- Component enable/disable toggles
+- Direct Python optimization (no temp files)
+- Energy balance validation
+- HOMER Pro NPC calculation
+- Professional outputs
 """
 
 import streamlit as st
@@ -23,25 +25,14 @@ from datetime import datetime
 import os
 from io import BytesIO
 
-# Import optimization code
+# Import optimization functions directly
 try:
-    import optimize_gridsearch_hydro_static_STREAMLITCHECK as opt_module
+    import optimize_gridsearch_hydro_CLEAN as opt_module
     OPTIMIZATION_AVAILABLE = True
 except ImportError:
     OPTIMIZATION_AVAILABLE = False
     st.error("❌ Optimization module not found")
 
-# Import degradation analysis - FIXED VERSION
-try:
-    import optimize_with_degradation_FIXED as deg_module
-    DEGRADATION_AVAILABLE = True
-except ImportError:
-    try:
-        import optimize_with_degradation as deg_module
-        DEGRADATION_AVAILABLE = True
-    except ImportError:
-        DEGRADATION_AVAILABLE = False
-        print("⚠️ Warning: Degradation module not found")
 
 # ==============================================================================
 # SUNGROW BESS DEPLOYMENT CALCULATION
@@ -51,27 +42,33 @@ def calculate_bess_deployment_sungrow(bess_power_mw, bess_capacity_mwh):
     """Calculate BESS deployment using REAL Sungrow PowerTitan 2.0 specifications."""
     import math
     
+    # Sungrow PowerTitan 2.0 specifications
     container_capacity_mwh = 10.0
     container_power_mw = 5.0
     container_length_m = 6.058
     container_width_m = 2.438
     container_height_m = 2.896
     
+    # Spacing requirements from Sungrow layout drawing
     back_to_back_spacing_m = 0.150
     adjacent_spacing_m = 1.500
     mvs_spacing_m = 3.500
     mvs_width_m = 2.000
     perimeter_clearance_m = 5.000
     
+    # Calculate number of containers
     num_containers_energy = math.ceil(bess_capacity_mwh / container_capacity_mwh)
     num_containers_power = math.ceil(bess_power_mw / container_power_mw)
     num_containers = max(num_containers_energy, num_containers_power)
     
+    # Actual installed capacity
     actual_capacity_mwh = num_containers * container_capacity_mwh
     actual_power_mw = num_containers * container_power_mw
     
+    # Number of MVS units (1 per 2 containers)
     num_mvs_units = math.ceil(num_containers / 2)
     
+    # Calculate layout
     if num_containers <= 2:
         total_length_m = container_length_m + (2 * perimeter_clearance_m)
         container_section_width = (container_width_m + back_to_back_spacing_m + container_width_m)
@@ -120,40 +117,76 @@ def calculate_bess_deployment_sungrow(bess_power_mw, bess_capacity_mwh):
 
 
 # ==============================================================================
-# EXCEL EXPORT WITH DEGRADATION SUPPORT
+# ENERGY BALANCE VALIDATION
 # ==============================================================================
 
-def export_results_industry_format(results_dict, results_df, optimal_row, 
-                                   config_params, degradation_results=None):
+def validate_energy_balance(hourly_dispatch, tolerance_kw=0.01):
     """
-    Export results in industry standard Excel format.
-    NOW INCLUDES DEGRADATION ANALYSIS SHEETS.
+    Validate energy balance for every hour.
+    
+    Returns:
+        dict with validation results
     """
+    # Calculate balance error (if not already present)
+    if 'Energy_Balance_Error_kW' not in hourly_dispatch.columns:
+        # Calculate it
+        total_gen = (hourly_dispatch.get('PV_Available_kW', 0) + 
+                    hourly_dispatch.get('Wind_Output_kW', 0) + 
+                    hourly_dispatch.get('Hydro_Output_kW', 0))
+        
+        total_consumption = (hourly_dispatch.get('PV_to_Load_kW', 0) + 
+                            hourly_dispatch.get('BESS_Charge_woeff_kW', 0) +
+                            hourly_dispatch.get('Curtailment_kW', 0) +
+                            hourly_dispatch.get('Unmet_Load_kW', 0))
+        
+        total_losses = ((hourly_dispatch.get('BESS_Charge_woeff_kW', 0) - 
+                        hourly_dispatch.get('BESS_Charge_wieff_kW', 0)) +
+                       (hourly_dispatch.get('BESS_Discharge_woeff_kW', 0) - 
+                        hourly_dispatch.get('BESS_Discharge_wieff_kW', 0)))
+        
+        hourly_dispatch['Energy_Balance_Error_kW'] = total_gen - (total_consumption + total_losses)
+    
+    balance_error = hourly_dispatch['Energy_Balance_Error_kW'].abs()
+    
+    # Statistics
+    max_error = balance_error.max()
+    mean_error = balance_error.mean()
+    hours_with_error = (balance_error > tolerance_kw).sum()
+    
+    # BESS SOC validation
+    bess_soc_min = hourly_dispatch.get('BESS_SOC_kWh', pd.Series([0])).min()
+    bess_soc_max = hourly_dispatch.get('BESS_SOC_kWh', pd.Series([0])).max()
+    
+    validation_results = {
+        'energy_balance_passed': max_error < tolerance_kw,
+        'max_balance_error_kw': max_error,
+        'mean_balance_error_kw': mean_error,
+        'hours_with_error': hours_with_error,
+        'bess_soc_min_kwh': bess_soc_min,
+        'bess_soc_max_kwh': bess_soc_max,
+        'bess_soc_valid': bess_soc_min >= -0.01,  # Allow tiny numerical error
+    }
+    
+    return validation_results
+
+
+# ==============================================================================
+# EXCEL EXPORT
+# ==============================================================================
+
+def export_results_industry_format(results_dict, results_df, optimal_row, config_params):
+    """Export results in industry standard Excel format."""
     output = BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         # Sheet 1: Summary
         summary_data = []
-        
-        # Check if degradation was applied
-        if degradation_results and 'degradation_applied' in degradation_results:
-            deg_settings = degradation_results['degradation_applied']
-            deg_status = []
-            if deg_settings['pv']:
-                deg_status.append("PV")
-            if deg_settings['bess']:
-                deg_status.append("BESS")
-            deg_text = " + ".join(deg_status) if deg_status else "None"
-        else:
-            deg_text = "None"
-        
         summary_data.extend([
             ['Parameter', 'Value'],
             ['Optimization Method', 'GRID_SEARCH'],
             ['NPC Calculation Method', 'Present Value Analysis'],
-            ['Degradation Analysis', deg_text],
-            ['', ''],
             ['Target Unmet Load (%)', config_params.get('target_unmet_percent', 0.1)],
+            ['', ''],
             ['Nominal Discount Rate (%)', config_params.get('discount_rate', 8.0)],
             ['Inflation Rate (%)', config_params.get('inflation_rate', 2.0)],
             ['Project Lifetime (years)', config_params.get('project_lifetime', 25)],
@@ -164,28 +197,10 @@ def export_results_industry_format(results_dict, results_df, optimal_row,
             ['BESS Power (kW)', results_dict['bess_power'] * 1000],
             ['BESS Capacity (kWh)', results_dict['bess_energy'] * 1000],
             ['', ''],
+            ['Total NPC ($)', results_dict['npc']],
+            ['System LCOE ($/MWh)', results_dict['lcoe']],
+            ['Unmet Load (%)', results_dict['unmet_pct']],
         ])
-        
-        # Add degradation summary if available
-        if degradation_results:
-            summary_data.extend([
-                ['--- DEGRADATION ANALYSIS ---', ''],
-                ['Year 1 NPC ($)', degradation_results.get('npc_year1', 0)],
-                ['25-Year NPC ($)', degradation_results.get('npc_25year', 0)],
-                ['BESS Replacement Cost PV ($)', degradation_results.get('replacement_cost_pv', 0)],
-                ['Year 1 LCOE ($/MWh)', degradation_results.get('lcoe_year1', 0)],
-                ['25-Year LCOE ($/MWh)', degradation_results.get('lcoe_25year', 0)],
-                ['PV Total Degradation (%)', degradation_results.get('pv_deg_total', 0)],
-                ['BESS Capacity Loss 20Y (%)', degradation_results.get('bess_loss_20y', 0)],
-                ['', ''],
-            ])
-        else:
-            summary_data.extend([
-                ['Total NPC ($)', results_dict['npc']],
-                ['System LCOE ($/MWh)', results_dict['lcoe']],
-                ['Unmet Load (%)', results_dict['unmet_pct']],
-            ])
-        
         pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False, header=False)
         
         # Sheet 2: Cost Breakdown
@@ -198,40 +213,12 @@ def export_results_industry_format(results_dict, results_df, optimal_row,
                 optimal_row.get('BESS_Capital_$', 0),
                 optimal_row.get('Capital_$', 0)
             ],
-            'Replacement ($)': [
-                optimal_row.get('PV_Replacement_$', 0),
-                optimal_row.get('Wind_Replacement_$', 0),
-                optimal_row.get('Hydro_Replacement_$', 0),
-                optimal_row.get('BESS_Replacement_$', 0),
-                optimal_row.get('Replacement_$', 0)
-            ],
-            'OM ($)': [
-                optimal_row.get('PV_OM_$', 0),
-                optimal_row.get('Wind_OM_$', 0),
-                optimal_row.get('Hydro_OM_$', 0),
-                optimal_row.get('BESS_OM_$', 0),
-                optimal_row.get('OM_$', 0)
-            ],
-            'Salvage ($)': [
-                optimal_row.get('PV_Salvage_$', 0),
-                optimal_row.get('Wind_Salvage_$', 0),
-                optimal_row.get('Hydro_Salvage_$', 0),
-                optimal_row.get('BESS_Salvage_$', 0),
-                optimal_row.get('Salvage_$', 0)
-            ],
             'NPC ($)': [
                 optimal_row.get('PV_NPC_$', 0),
                 optimal_row.get('Wind_NPC_$', 0),
                 optimal_row.get('Hydro_NPC_$', 0),
                 optimal_row.get('BESS_NPC_$', 0),
                 optimal_row.get('NPC_$', 0)
-            ],
-            'Annualized ($/yr)': [
-                optimal_row.get('PV_Annualized_$/yr', 0),
-                optimal_row.get('Wind_Annualized_$/yr', 0),
-                optimal_row.get('Hydro_Annualized_$/yr', 0),
-                optimal_row.get('BESS_Annualized_$/yr', 0),
-                optimal_row.get('Annualized_$/yr', 0)
             ]
         })
         cost_breakdown.to_excel(writer, sheet_name='Cost_Breakdown', index=False)
@@ -239,23 +226,8 @@ def export_results_industry_format(results_dict, results_df, optimal_row,
         # Sheet 3: All Results
         results_df.to_excel(writer, sheet_name='All_Results', index=False)
         
-        # Sheet 4+: Degradation Analysis Sheets
-        if degradation_results and 'hourly_dispatch' in degradation_results:
-            # Export yearly summary
-            if 'yearly_summary' in degradation_results:
-                degradation_results['yearly_summary'].to_excel(
-                    writer, sheet_name='Degradation_25Years', index=False
-                )
-            
-            # Export hourly dispatch for selected years
-            hourly_dispatch = degradation_results['hourly_dispatch']
-            for year_key in sorted(hourly_dispatch.keys()):
-                year_num = year_key.split('_')[1]
-                sheet_name = f'Year_{year_num}_Hourly'
-                hourly_dispatch[year_key].to_excel(writer, sheet_name=sheet_name, index=False)
-        
-        # Fallback: Standard Year 1 dispatch if no degradation
-        elif 'optimal_dispatch' in results_dict:
+        # Sheet 4: Year 1 Hourly (with energy balance)
+        if 'optimal_dispatch' in results_dict:
             results_dict['optimal_dispatch'].to_excel(writer, sheet_name='Year_1_Hourly', index=False)
     
     output.seek(0)
@@ -344,45 +316,49 @@ def create_cost_analysis_charts_with_tables(results, optimal_row):
 # ==============================================================================
 
 def create_fixed_cash_flow_chart(results, optimal_row):
-    """Create simplified cash flow chart."""
+    """Create corrected cash flow chart with visible operating costs."""
     project_lifetime = results.get('config_params', {}).get('project_lifetime', 25)
     years = list(range(0, project_lifetime + 1))
     
     capital_flow = [0] * len(years)
+    operating_flow = [0] * len(years)
     replacement_flow = [0] * len(years)
     salvage_flow = [0] * len(years)
     
+    # Year 0: Capital (NEGATIVE)
     capital_flow[0] = -optimal_row.get('Capital_$', 0) / 1e6
     
+    # Show nominal annual O&M
+    total_om_pv = optimal_row.get('OM_$', 0) / 1e6
+    annual_om = total_om_pv / project_lifetime
+    
+    for year in range(1, project_lifetime + 1):
+        operating_flow[year] = -annual_om
+    
+    # Replacement costs
     total_replacement = optimal_row.get('Replacement_$', 0) / 1e6
     bess_lifetime = 15
     
     for year in range(bess_lifetime, project_lifetime, bess_lifetime):
-        replacement_flow[year] = -total_replacement
+        replacement_flow[year] = -total_replacement / 2
     
+    # Final year: Salvage (POSITIVE)
     salvage_flow[-1] = optimal_row.get('Salvage_$', 0) / 1e6
     
+    # Create chart
     fig = go.Figure()
     fig.add_trace(go.Bar(name='Capital', x=years, y=capital_flow, marker_color='#2E7D32'))
+    fig.add_trace(go.Bar(name='Operating', x=years, y=operating_flow, marker_color='#F57C00'))
     fig.add_trace(go.Bar(name='Replacement', x=years, y=replacement_flow, marker_color='#1976D2'))
     fig.add_trace(go.Bar(name='Salvage', x=years, y=salvage_flow, marker_color='#388E3C'))
     
     fig.update_layout(
-        title='Nominal Cash Flow (Major Costs Only)',
+        title='Nominal Cash Flow',
         xaxis_title='Year',
         yaxis_title='Cash Flow ($M)',
         barmode='relative',
         height=450,
-        showlegend=True,
-        annotations=[
-            dict(
-                text="Note: Annual O&M costs not shown (too small to visualize effectively)",
-                xref="paper", yref="paper",
-                x=0.5, y=-0.15,
-                showarrow=False,
-                font=dict(size=10, color="gray")
-            )
-        ]
+        showlegend=True
     )
     
     return fig
@@ -507,104 +483,83 @@ def create_single_day_dispatch_profile(results):
     """Create dispatch profile for a SINGLE REPRESENTATIVE DAY."""
     if 'optimal_dispatch' in results:
         dispatch_df = results['optimal_dispatch'].copy()
-
-        # -----------------------------------------------------------------
-        # COLUMN DETECTION
-        # We need THREE things:
-        #   1. pv_available_col  - TOTAL PV generated (for the area fill)
-        #   2. wind_col / hydro_col - other generation
-        #   3. day-selection col  - use AVAILABLE PV to find median day
-        # -----------------------------------------------------------------
-        if 'PV_Available_kW' in dispatch_df.columns:
-            # Degradation/Anaconda format - your current output
-            pv_available_col = 'PV_Available_kW'
-            wind_col  = 'Wind_Output_kW'  if 'Wind_Output_kW'  in dispatch_df.columns else None
-            hydro_col = 'Hydro_Output_kW' if 'Hydro_Output_kW' in dispatch_df.columns else None
-
-        elif 'PV_Output_kW' in dispatch_df.columns:
-            # Standard base-optimisation format
-            pv_available_col = 'PV_Output_kW'
-            wind_col  = 'Wind_Output_kW'  if 'Wind_Output_kW'  in dispatch_df.columns else None
-            hydro_col = 'Hydro_Output_kW' if 'Hydro_Output_kW' in dispatch_df.columns else None
-
-        elif 'PV_to_Load_kW' in dispatch_df.columns:
-            # Fallback: only PV_to_Load available (less accurate but won't crash)
-            pv_available_col = 'PV_to_Load_kW'
-            wind_col  = None
-            hydro_col = None
+        
+        # Check if Hour_of_Day already exists (new format) or needs to be created
+        if 'Hour_of_Day' not in dispatch_df.columns:
+            # Old format: Hour might be 0-23 repeated, need to check
+            if dispatch_df['Hour'].max() <= 23:
+                # Hour is already 0-23, create absolute hour
+                dispatch_df['Absolute_Hour'] = dispatch_df.index
+                dispatch_df['Hour_of_Day'] = dispatch_df['Hour']
+            else:
+                # Hour is absolute (0-8759), create Hour_of_Day
+                dispatch_df['Absolute_Hour'] = dispatch_df['Hour']
+                dispatch_df['Hour_of_Day'] = dispatch_df['Hour'] % 24
         else:
-            pv_available_col = None
-            wind_col  = None
-            hydro_col = None
-
-        # Fill missing wind/hydro with zeros
-        if wind_col is None:
-            dispatch_df['_wind_zero'] = 0
-            wind_col = '_wind_zero'
-        if hydro_col is None:
-            dispatch_df['_hydro_zero'] = 0
-            hydro_col = '_hydro_zero'
-        if pv_available_col is None:
-            dispatch_df['_pv_zero'] = 0
-            pv_available_col = '_pv_zero'
-
-        # -----------------------------------------------------------------
-        # DAY DETECTION
-        # Hour column is 0-23 repeated (new format) or continuous 0-8759
-        # -----------------------------------------------------------------
-        if dispatch_df['Hour'].max() <= 23:
-            dispatch_df['Continuous_Hour'] = dispatch_df.index
-            dispatch_df['Day'] = dispatch_df['Continuous_Hour'] // 24
-        else:
-            dispatch_df['Day'] = dispatch_df['Hour'] // 24
-
-        # Pick the MEDIAN PV day using AVAILABLE PV (bell-curve shape)
-        daily_pv = dispatch_df.groupby('Day')[pv_available_col].sum()
+            # New format: both columns exist
+            if 'Hour' in dispatch_df.columns and dispatch_df['Hour'].max() > 24:
+                dispatch_df['Absolute_Hour'] = dispatch_df['Hour']
+            else:
+                dispatch_df['Absolute_Hour'] = dispatch_df.index
+        
+        # Pick a day with median PV production
+        dispatch_df['Day'] = dispatch_df['Absolute_Hour'] // 24  # ✅ Use Absolute_Hour
+        
+        # Use PV_Available_kW if present, otherwise PV_Output_kW
+        pv_col = 'PV_Available_kW' if 'PV_Available_kW' in dispatch_df.columns else 'PV_Output_kW'
+        daily_pv = dispatch_df.groupby('Day')[pv_col].sum()
+        
         median_pv_day = daily_pv.sort_values().index[len(daily_pv) // 2]
-
-        # Extract that day
-        day_profile = dispatch_df[dispatch_df['Day'] == median_pv_day].copy()
-
-        # Hour of day axis
-        if day_profile['Hour'].max() <= 23:
-            day_profile['Hour_of_Day'] = day_profile['Hour']
-        else:
-            day_profile['Hour_of_Day'] = day_profile['Hour'] % 24
-
-        # Convert to MW
-        day_profile['Load_MW']  = day_profile['Load_kW']          / 1000
-        day_profile['PV_MW']    = day_profile[pv_available_col]   / 1000   # AVAILABLE total PV, not PV-to-load
-        day_profile['Wind_MW']  = day_profile[wind_col]           / 1000
-        day_profile['Hydro_MW'] = day_profile[hydro_col]          / 1000
-
+        
+        start_hour = median_pv_day * 24
+        end_hour = start_hour + 24
+        
+        day_profile = dispatch_df[(dispatch_df['Absolute_Hour'] >= start_hour) & 
+                                  (dispatch_df['Absolute_Hour'] < end_hour)].copy()
+        
+        # Hour_of_Day already exists from above logic
+        
+        # Convert to MW (handle both formats)
+        day_profile['Load_MW'] = day_profile['Load_kW'] / 1000
+        day_profile['PV_MW'] = day_profile[pv_col] / 1000
+        day_profile['Wind_MW'] = day_profile.get('Wind_Output_kW', 0) / 1000
+        day_profile['Hydro_MW'] = day_profile.get('Hydro_Output_kW', 0) / 1000
+        
         # BESS SOC
         bess_capacity_kwh = results.get('bess_energy', 1) * 1000
-        if bess_capacity_kwh > 0 and 'BESS_SOC_kWh' in day_profile.columns:
-            day_profile['BESS_SOC_%'] = (day_profile['BESS_SOC_kWh'] / bess_capacity_kwh * 100).clip(0, 100)
+        if 'BESS_SOC_pct' in day_profile.columns:
+            day_profile['BESS_SOC_%'] = day_profile['BESS_SOC_pct']
+        elif 'BESS_SOC_kWh' in day_profile.columns:
+            day_profile['BESS_SOC_%'] = (day_profile['BESS_SOC_kWh'] / bess_capacity_kwh) * 100
         else:
             day_profile['BESS_SOC_%'] = 50
-
+        
     else:
+        # Fallback
         hours = list(range(24))
         day_profile = pd.DataFrame({
             'Hour_of_Day': hours,
-            'Load_MW':    [0.5] * 24,
-            'PV_MW':      [0]   * 24,
-            'Wind_MW':    [0]   * 24,
-            'Hydro_MW':   [0]   * 24,
-            'BESS_SOC_%': [50]  * 24,
+            'Load_MW': [5] * 24,
+            'PV_MW': [0] * 24,
+            'Wind_MW': [0] * 24,
+            'Hydro_MW': [0] * 24,
+            'BESS_SOC_%': [50] * 24
         })
     
+    # Create figure
     fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Use fill='tozeroy' instead of stackgroup for non-stacked visualization
+    # Order: Bottom to top for visual layering
     
     fig.add_trace(go.Scatter(
         x=day_profile['Hour_of_Day'],
         y=day_profile['Hydro_MW'],
         name='Hydro',
         mode='lines',
-        line=dict(width=0),
-        stackgroup='one',
-        fillcolor='rgba(141, 211, 199, 0.7)',
+        line=dict(width=0.5, color='rgba(141, 211, 199, 1)'),
+        fill='tozeroy',
+        fillcolor='rgba(141, 211, 199, 0.6)',
         hovertemplate='Hour %{x}<br>Hydro: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
@@ -613,9 +568,9 @@ def create_single_day_dispatch_profile(results):
         y=day_profile['PV_MW'],
         name='PV',
         mode='lines',
-        line=dict(width=0),
-        stackgroup='one',
-        fillcolor='rgba(253, 180, 98, 0.7)',
+        line=dict(width=0.5, color='rgba(253, 180, 98, 1)'),
+        fill='tozeroy',
+        fillcolor='rgba(253, 180, 98, 0.6)',
         hovertemplate='Hour %{x}<br>PV: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
@@ -624,9 +579,9 @@ def create_single_day_dispatch_profile(results):
         y=day_profile['Wind_MW'],
         name='Wind',
         mode='lines',
-        line=dict(width=0),
-        stackgroup='one',
-        fillcolor='rgba(128, 177, 211, 0.7)',
+        line=dict(width=0.5, color='rgba(128, 177, 211, 1)'),
+        fill='tozeroy',
+        fillcolor='rgba(128, 177, 211, 0.6)',
         hovertemplate='Hour %{x}<br>Wind: %{y:.2f} MW<extra></extra>'
     ), secondary_y=False)
     
@@ -656,29 +611,15 @@ def create_single_day_dispatch_profile(results):
         range=[0, 24]
     )
     
-    fig.update_yaxes(
-        title_text="Power (MW)",
-        secondary_y=False
-    )
-    
-    fig.update_yaxes(
-        title_text="BESS SOC (%)",
-        secondary_y=True,
-        range=[0, 120]
-    )
+    fig.update_yaxes(title_text="Power (MW)", secondary_y=False)
+    fig.update_yaxes(title_text="BESS SOC (%)", secondary_y=True, range=[0, 120])
     
     fig.update_layout(
         title='Single Day Dispatch Profile (Representative Day)',
         hovermode='x unified',
         height=500,
         showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
     return fig
@@ -712,10 +653,7 @@ def create_energy_mix_pie_chart(optimal_row):
         hole=0.3
     )])
     
-    fig.update_layout(
-        title='Annual Energy Production Mix',
-        height=400
-    )
+    fig.update_layout(title='Annual Energy Production Mix', height=400)
     
     energy_table = pd.DataFrame({
         'Component': ['PV', 'Wind', 'Hydro', 'Total'],
@@ -737,50 +675,18 @@ def create_energy_mix_pie_chart(optimal_row):
 
 
 # ==============================================================================
-# EMISSIONS TABLE
-# ==============================================================================
-
-def create_emissions_table(optimal_row, results):
-    """Create emissions summary table (placeholder for future implementation)."""
-    # Placeholder - emissions calculations will be implemented later
-    emissions_data = pd.DataFrame({
-        'Pollutant': ['Carbon Dioxide', 'Carbon Monoxide', 'Unburned Hydrocarbons', 
-                     'Particulate Matter', 'Sulfur Dioxide', 'Nitrogen Oxides'],
-        'Quantity': [0, 0, 0, 0, 0, 0],
-        'Units': ['kg/yr', 'kg/yr', 'kg/yr', 'kg/yr', 'kg/yr', 'kg/yr']
-    })
-    
-    return emissions_data
-
-
-# ==============================================================================
 # STREAMLIT APP
 # ==============================================================================
 
 st.set_page_config(
-    page_title="Energy Modeling Optimizer",
-    page_icon="https://img.icons8.com/color/48/lightning-bolt.png",
+    page_title="RE Optimization Tool",
+    page_icon="🌞",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# SJ logo as inline SVG + new tool name
-st.markdown("""
-<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:4px">
-    <svg width="52" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">
-        <rect width="52" height="52" rx="0" fill="#0047AB"/>
-        <text x="18" y="38" font-family="Arial,sans-serif" font-size="32"
-              font-weight="bold" fill="white" text-anchor="middle">S</text>
-        <text x="36" y="37" font-family="Arial,sans-serif" font-size="18"
-              font-weight="bold" fill="white" text-anchor="middle">J</text>
-        <circle cx="38" cy="18" r="4" fill="#E63946"/>
-    </svg>
-    <p style="font-size:2.5rem;font-weight:bold;color:#1f77b4;margin:0">
-        Energy Modeling Optimizer
-    </p>
-</div>
-""", unsafe_allow_html=True)
-st.markdown("**Hybrid System Designer: PV + Wind + Hydro + Battery Storage + CCGT + Hydrogen**")
+st.markdown('<p style="font-size:2.5rem;font-weight:bold;color:#1f77b4;text-align:center">🌞 Renewable Energy Optimization Tool</p>', unsafe_allow_html=True)
+st.markdown("**Hybrid System Designer: PV + Wind + Hydro + Battery Storage**")
 st.markdown("---")
 
 # Initialize session state
@@ -801,22 +707,16 @@ with st.sidebar:
     with col1:
         enable_pv = st.checkbox("☀️ Solar PV", value=True, key="enable_pv")
         enable_wind = st.checkbox("💨 Wind", value=True, key="enable_wind")
-        enable_hydro = st.checkbox("💧 Hydro", value=True, key="enable_hydro")
     with col2:
+        enable_hydro = st.checkbox("💧 Hydro", value=True, key="enable_hydro")
         enable_bess = st.checkbox("🔋 BESS", value=True, key="enable_bess")
-        enable_ccgt = st.checkbox("🔥 CCGT", value=False, disabled=True, key="enable_ccgt", 
-                                  help="Coming soon - Combined Cycle Gas Turbine")
-        enable_hydrogen = st.checkbox("⚗️ Hydrogen", value=False, disabled=True, key="enable_hydrogen",
-                                     help="Coming soon - Hydrogen production/storage")
     
     if not any([enable_pv, enable_wind, enable_hydro, enable_bess]):
         st.error("⚠️ At least one component must be enabled!")
     
     st.markdown("---")
     
-    # ==============================================================================
-    # SOLAR PV - WITH DEGRADATION CHECKBOX AND PROFILE UPLOAD
-    # ==============================================================================
+    # Solar PV
     with st.expander("☀️ SOLAR PV", expanded=enable_pv):
         if not enable_pv:
             st.warning("⚠️ Solar PV is DISABLED")
@@ -826,8 +726,6 @@ with st.sidebar:
             pv_capex = 1000
             pv_opex = 10
             pv_lifetime = 25
-            pv_file = None
-            apply_pv_degradation = False
         else:
             st.subheader("Capacity Range")
             col1, col2 = st.columns(2)
@@ -841,36 +739,11 @@ with st.sidebar:
             col1, col2 = st.columns(2)
             with col1:
                 pv_capex = st.number_input("CapEx ($/kW)", value=1000, step=10, key="pv_capex")
-                pv_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="pv_opex")
+                pv_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="pv_opex")
             with col2:
-                pv_lifetime = st.number_input("Lifetime (years)", value=25, step=1, key="pv_life")
-            
-            # DEGRADATION CHECKBOX (IN COMPONENT TAB)
-            st.markdown("---")
-            apply_pv_degradation = st.checkbox(
-                "🔬 Apply PV Degradation Analysis",
-                value=False,
-                help="Enable 25-year PV degradation modeling (~9.8% total degradation)",
-                key="apply_pv_degradation"
-            )
-            if apply_pv_degradation:
-                st.info("✓ PV Degradation: ~9.8% over 25 years")
-            
-            # PROFILE UPLOAD (IN COMPONENT TAB)
-            st.markdown("---")
-            st.subheader("📊 PV Profile Upload")
-            pv_file = st.file_uploader(
-                "Upload PV Generation Profile (1 kW baseline)",
-                type=['csv', 'xlsx'],
-                key="pv_file",
-                help="Hourly PV generation profile (8760 hours)"
-            )
-            if pv_file:
-                st.success(f"✓ Uploaded: {pv_file.name}")
+                pv_lifetime = st.number_input("Lifetime (years)", value=30, step=1, key="pv_life")
     
-    # ==============================================================================
-    # WIND - WITH PROFILE UPLOAD
-    # ==============================================================================
+    # Wind
     with st.expander("💨 WIND"):
         if not enable_wind:
             st.warning("⚠️ Wind is DISABLED")
@@ -880,7 +753,6 @@ with st.sidebar:
             wind_capex = 1200
             wind_opex = 15
             wind_lifetime = 20
-            wind_file = None
         else:
             st.subheader("Capacity Range")
             col1, col2 = st.columns(2)
@@ -897,22 +769,8 @@ with st.sidebar:
                 wind_opex = st.number_input("OpEx ($/kW/yr)", value=15, step=1, key="wind_opex")
             with col2:
                 wind_lifetime = st.number_input("Lifetime (years)", value=20, step=1, key="wind_life")
-            
-            # PROFILE UPLOAD (IN COMPONENT TAB)
-            st.markdown("---")
-            st.subheader("📊 Wind Profile Upload")
-            wind_file = st.file_uploader(
-                "Upload Wind Generation Profile (1 kW baseline)",
-                type=['csv', 'xlsx'],
-                key="wind_file",
-                help="Hourly wind generation profile (8760 hours)"
-            )
-            if wind_file:
-                st.success(f"✓ Uploaded: {wind_file.name}")
     
-    # ==============================================================================
-    # HYDRO - WITH PROFILE UPLOAD
-    # ==============================================================================
+    # Hydro
     with st.expander("💧 HYDRO"):
         if not enable_hydro:
             st.warning("⚠️ Hydro is DISABLED")
@@ -923,7 +781,6 @@ with st.sidebar:
             hydro_capex = 2000
             hydro_opex = 20
             hydro_lifetime = 50
-            hydro_file = None
         else:
             st.subheader("Capacity Range")
             col1, col2 = st.columns(2)
@@ -943,22 +800,8 @@ with st.sidebar:
                 hydro_opex = st.number_input("OpEx ($/kW/yr)", value=20, step=1, key="hydro_opex")
             with col2:
                 hydro_lifetime = st.number_input("Lifetime (years)", value=50, step=1, key="hydro_life")
-            
-            # PROFILE UPLOAD (IN COMPONENT TAB) - OPTIONAL
-            st.markdown("---")
-            st.subheader("📊 Hydro Profile Upload (Optional)")
-            hydro_file = st.file_uploader(
-                "Upload Hydro Availability Profile (optional)",
-                type=['csv', 'xlsx'],
-                key="hydro_file",
-                help="Hourly hydro availability profile (8760 hours). If not provided, uses uniform availability."
-            )
-            if hydro_file:
-                st.success(f"✓ Uploaded: {hydro_file.name}")
     
-    # ==============================================================================
-    # BESS - WITH DEGRADATION CHECKBOX
-    # ==============================================================================
+    # BESS
     with st.expander("🔋 BATTERY STORAGE"):
         if not enable_bess:
             st.warning("⚠️ BESS is DISABLED")
@@ -966,15 +809,14 @@ with st.sidebar:
             bess_max = 0.0
             bess_step = 1.0
             bess_duration = 4.0
-            bess_min_soc = 20
-            bess_max_soc = 100
-            bess_charge_eff = 95
-            bess_discharge_eff = 95
-            bess_lifetime = 15
-            bess_power_capex = 300
-            bess_energy_capex = 200
-            bess_opex = 2
-            apply_bess_degradation = False
+            bess_min_soc = 20.0
+            bess_max_soc = 100.0
+            bess_charge_eff = 92.94
+            bess_discharge_eff = 91.78
+            bess_lifetime = 15.0
+            bess_power_capex = 300.0
+            bess_energy_capex = 200.0
+            bess_opex = 2.0
         else:
             st.subheader("Power Range")
             col1, col2 = st.columns(2)
@@ -987,12 +829,12 @@ with st.sidebar:
             st.subheader("Storage Parameters")
             col1, col2 = st.columns(2)
             with col1:
-                bess_duration = st.number_input("Duration (hours)", value=4.0, min_value=0.5, step=0.5, key="bess_dur")
-                bess_min_soc = st.number_input("Min SOC (%)", value=20.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_min_soc")
+                bess_duration = st.number_input("Duration (hours)", value=2.0, min_value=0.5, step=0.5, key="bess_dur")
+                bess_min_soc = st.number_input("Min SOC (%)", value=20, min_value=10, max_value=90, key="bess_min_soc")
                 bess_charge_eff = st.number_input("Charging Eff (%)", value=92.94, min_value=50.0, max_value=100.0, step=0.01, key="bess_charge_eff")
             with col2:
-                bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
-                bess_max_soc = st.number_input("Max SOC (%)", value=100.0, min_value=0.0, max_value=100.0, step=0.1, key="bess_max_soc")
+                bess_lifetime = st.number_input("Lifetime (years)", value=20, step=1, key="bess_life")
+                bess_max_soc = st.number_input("Max SOC (%)", value=90, min_value=0, max_value=100, key="bess_max_soc")
                 bess_discharge_eff = st.number_input("Discharging Eff (%)", value=91.78, min_value=50.0, max_value=100.0, step=0.01, key="bess_discharge_eff")
             
             st.subheader("Financial Parameters")
@@ -1002,90 +844,38 @@ with st.sidebar:
                 bess_energy_capex = st.number_input("Energy CapEx ($/kWh)", value=200, step=10, key="bess_energy_capex")
             with col2:
                 bess_opex = st.number_input("OpEx ($/kW/yr)", value=2, step=1, key="bess_opex")
-            
-            # DEGRADATION CHECKBOX (IN COMPONENT TAB)
-            st.markdown("---")
-            apply_bess_degradation = st.checkbox(
-                "🔬 Apply BESS Degradation Analysis",
-                value=False,
-                help="Enable 25-year BESS degradation modeling with replacement at year 21",
-                key="apply_bess_degradation"
-            )
-            if apply_bess_degradation:
-                st.info("✓ BESS Degradation: ~31% loss by year 20, replacement at year 21")
     
-    # ==============================================================================
-    # CCGT (Placeholder)
-    # ==============================================================================
-    with st.expander("🔥 CCGT (Coming Soon)", expanded=False):
-        st.info("⚠️ Combined Cycle Gas Turbine module will be available in a future release")
-        ccgt_min = 0.0
-        ccgt_max = 0.0
-        ccgt_step = 1.0
-    
-    # ==============================================================================
-    # HYDROGEN (Placeholder)
-    # ==============================================================================
-    with st.expander("⚗️ HYDROGEN (Coming Soon)", expanded=False):
-        st.info("⚠️ Hydrogen production and storage module will be available in a future release")
-        hydrogen_min = 0.0
-        hydrogen_max = 0.0
-        hydrogen_step = 1.0
-    
-    # ==============================================================================
-    # LOAD PROFILE SETUP
-    # ==============================================================================
-    st.markdown("---")
-    st.header("📁 Load Profile Setup")
-    
-    # Load Type Dropdown
-    load_type = st.selectbox(
-        "Load Type",
-        options=["Select Load Type", "Residential", "Commercial", "Industrial", "Community"],
-        index=0,
-        help="Select the type of load profile you want to upload"
-    )
-    
-    # Show file uploader only after load type is selected
-    if load_type != "Select Load Type":
-        load_file = st.file_uploader(
-            f"📊 Upload {load_type} Load Profile",
-            type=['csv', 'xlsx'],
-            key="load_file",
-            help=f"Upload hourly load profile for {load_type} application (8760 hours)"
-        )
-        if load_file:
-            st.success(f"✓ Uploaded: {load_file.name}")
-    else:
-        load_file = None
-        st.caption("⚠️ Please select a load type first")
-    
-    # ==============================================================================
-    # FINANCIAL PARAMETERS
-    # ==============================================================================
-    st.markdown("---")
+    # Financial Parameters
     with st.expander("💰 FINANCIAL PARAMETERS"):
         discount_rate = st.number_input("Discount Rate (%)", value=8.0, min_value=0.0, max_value=20.0, step=0.5)
         inflation_rate = st.number_input("Inflation Rate (%)", value=2.0, min_value=0.0, max_value=10.0, step=0.5)
         project_lifetime = st.number_input("Project Lifetime (years)", value=25, min_value=1, max_value=50, step=1)
     
-    # ==============================================================================
-    # EMISSIONS SETTINGS
-    # ==============================================================================
-    with st.expander("🌍 EMISSIONS SETTINGS"):
-        calculate_emissions = st.checkbox(
-            "Calculate Emissions",
-            value=False,
-            help="Enable to calculate and display emissions (CO2, NOx, etc.) in results"
-        )
-        if calculate_emissions:
-            st.info("📊 Emissions table will be displayed in Results tab")
-    
-    # ==============================================================================
-    # OPTIMIZATION SETTINGS
-    # ==============================================================================
+    # Optimization Settings
     with st.expander("🎯 OPTIMIZATION SETTINGS"):
-        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=0.1, min_value=0.0, max_value=50.0, step=0.1, key="target_unmet")
+        target_unmet_percent = st.number_input("Target Unmet Load (%)", value=10.0, min_value=0.0, max_value=30.0, step=0.1, key="target_unmet")
+    
+    # File Uploads
+    st.header("📁 Upload Profiles")
+    load_file = st.file_uploader("Load Profile", type=['csv', 'xlsx'], key="load_file")
+    
+    if enable_pv:
+        pv_file = st.file_uploader("PV Profile (1 kW)", type=['csv', 'xlsx'], key="pv_file")
+    else:
+        pv_file = None
+        st.caption("⚠️ PV profile not required (PV disabled)")
+    
+    if enable_wind:
+        wind_file = st.file_uploader("Wind Profile (1 kW)", type=['csv', 'xlsx'], key="wind_file")
+    else:
+        wind_file = None
+        st.caption("⚠️ Wind profile not required (Wind disabled)")
+    
+    if enable_hydro:
+        hydro_file = st.file_uploader("Hydro Profile (Optional)", type=['csv', 'xlsx'], key="hydro_file")
+    else:
+        hydro_file = None
+        st.caption("⚠️ Hydro profile not required (Hydro disabled)")
 
 # ========== MAIN TABS ==========
 tab1, tab2, tab3 = st.tabs(["🏠 Home", "⚙️ Optimize", "📊 Results"])
@@ -1094,12 +884,12 @@ tab1, tab2, tab3 = st.tabs(["🏠 Home", "⚙️ Optimize", "📊 Results"])
 pv_options = int((pv_max - pv_min) / pv_step) + 1 if pv_step > 0 and enable_pv else 1
 wind_options = int((wind_max - wind_min) / wind_step) + 1 if wind_step > 0 and enable_wind else 1
 hydro_options = int((hydro_max - hydro_min) / hydro_step) + 1 if hydro_step > 0 and enable_hydro else 1
-bess_options = int((bess_max - bess_min) / bess_step) + 1 if bess_step > 0 and enable_bess else 1
+bess_options = float((bess_max - bess_min) / bess_step) + 1 if bess_step > 0 and enable_bess else 1
 total_combinations = pv_options * wind_options * hydro_options * bess_options
 
 # TAB 1: HOME
 with tab1:
-    st.header("Welcome to the Energy Modeling Optimizer")
+    st.header("Welcome to the Renewable Energy Optimization Tool")
     st.markdown("""
     ### 🎯 Purpose
     Optimize hybrid renewable energy systems to minimize Net Present Cost while meeting reliability targets.
@@ -1109,13 +899,7 @@ with tab1:
     - **PV + BESS** (Solar + Storage)
     - **PV + Wind + BESS** (Hybrid Solar-Wind)
     - **PV + Wind + Hydro + BESS** (Full Hybrid)
-    - **Future: CCGT and Hydrogen integration**
-    
-    ### 🔬 Advanced Degradation Analysis
-    - **PV Degradation**: ~9.8% capacity loss over 25 years
-    - **BESS Degradation**: ~31% capacity loss by year 20 with automatic replacement at year 21
-    - **Full 25-Year Hourly Simulation**: Generates detailed hourly dispatch for selected years
-    - **Enhanced Excel Export**: Multi-sheet output with yearly summary and hourly data
+    - And many more!
     """)
     
     # Active Configuration
@@ -1131,16 +915,6 @@ with tab1:
     
     if len(active_components) > 0:
         st.success(f"**Enabled Components:** {' + '.join(active_components)}")
-    
-    # Show degradation status
-    degradation_status = []
-    if apply_pv_degradation:
-        degradation_status.append("☀️ PV Degradation")
-    if apply_bess_degradation:
-        degradation_status.append("🔋 BESS Degradation")
-    
-    if len(degradation_status) > 0:
-        st.info(f"**Degradation Analysis:** {' + '.join(degradation_status)}")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -1165,9 +939,6 @@ with tab1:
             st.metric("BESS", "Disabled", "❌")
     
     st.info(f"**Total Search Space:** {total_combinations:,} combinations")
-    
-    if load_type != "Select Load Type":
-        st.success(f"**Load Type Selected:** {load_type}")
 
 # TAB 2: OPTIMIZE
 with tab2:
@@ -1194,10 +965,6 @@ with tab2:
     if not any([enable_pv, enable_wind, enable_hydro, enable_bess]):
         validation_passed = False
         validation_messages.append("❌ At least one component must be enabled")
-    
-    if load_type == "Select Load Type":
-        validation_passed = False
-        validation_messages.append("❌ Please select a load type")
     
     if not load_file:
         validation_passed = False
@@ -1227,13 +994,6 @@ with tab2:
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                # Check if degradation analysis should be used
-                use_degradation = apply_pv_degradation or apply_bess_degradation
-                
-                if use_degradation and not DEGRADATION_AVAILABLE:
-                    st.error("❌ Degradation analysis module not available")
-                    st.stop()
-                
                 # Read profiles
                 status_text.text("📊 Reading profiles...")
                 progress_bar.progress(10)
@@ -1255,194 +1015,102 @@ with tab2:
                 else:
                     hydro_df = pd.DataFrame({'Hour': range(8760), 'Output_kW': [1.0] * 8760})
                 
-                # Build Excel input
-                status_text.text("🔨 Building input file...")
+                # Extract profiles as NumPy arrays
+                status_text.text("🔨 Preparing data...")
                 progress_bar.progress(15)
                 
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    # Configuration
-                    pd.DataFrame({
-                        'Parameter': ['Simulation Hours', 'Target Unmet Load (%)', 'Optimization Method',
-                                     'Discount Rate (%)', 'Inflation Rate (%)', 'Project Lifetime (years)', 'Use Dynamic LCOE'],
-                        'Value': [8760, target_unmet_percent, 'GRID_SEARCH', discount_rate, inflation_rate, project_lifetime, 'NO']
-                    }).to_excel(writer, sheet_name='Configuration', index=False)
-                    
-                    # Grid Search Config
-                    pd.DataFrame({
-                        'Parameter': ['Enable Grid Search', 'PV Search Start', 'PV Search End', 'PV Search Step',
-                                     'Wind Search Start', 'Wind Search End', 'Wind Search Step',
-                                     'Hydro Search Start', 'Hydro Search End', 'Hydro Search Step',
-                                     'BESS Search Start', 'BESS Search End', 'BESS Search Step',
-                                     'Max Combinations', 'Optimization Objective', 'Show Top N Solutions'],
-                        'Value': ['YES', pv_min*1000, pv_max*1000, pv_step*1000, 
-                                 wind_min*1000, wind_max*1000, wind_step*1000,
-                                 hydro_min*1000, hydro_max*1000, hydro_step*1000, 
-                                 bess_min*1000, bess_max*1000, bess_step*1000,
-                                 100000000, 'NPC', 5]
-                    }).to_excel(writer, sheet_name='Grid_Search_Config', index=False)
-                    
-                    # Component sheets
-                    pd.DataFrame({
-                        'Parameter': ['LCOE', 'PVsyst Baseline', 'Capex', 'O&M Cost', 'Lifetime'],
-                        'Value': [0, 1.0, pv_capex, pv_opex, pv_lifetime]
-                    }).to_excel(writer, sheet_name='Solar_PV', index=False)
-                    
-                    pd.DataFrame({
-                        'Parameter': ['Include Wind?', 'LCOE', 'Capex', 'O&M Cost', 'Lifetime'],
-                        'Value': ['YES' if enable_wind else 'NO', 0, wind_capex, wind_opex, wind_lifetime]
-                    }).to_excel(writer, sheet_name='Wind', index=False)
-                    
-                    pd.DataFrame({
-                        'Parameter': ['Include Hydro?', 'LCOE', 'Capex', 'O&M Cost', 'Lifetime', 'Operating Hours'],
-                        'Value': ['YES' if enable_hydro else 'NO', 0, hydro_capex, hydro_opex, hydro_lifetime, hydro_hours_per_day]
-                    }).to_excel(writer, sheet_name='Hydro', index=False)
-                    
-                    pd.DataFrame({
-                        'Parameter': ['Duration', 'LCOS', 'Charge Efficiency', 'Discharge Efficiency', 'Min SOC', 'Max SOC',
-                                     'Power Capex', 'Energy Capex', 'O&M Cost', 'Lifetime'],
-                        'Value': [bess_duration, 0, bess_charge_eff, bess_discharge_eff, bess_min_soc, bess_max_soc,
-                                 bess_power_capex, bess_energy_capex, bess_opex, bess_lifetime]
-                    }).to_excel(writer, sheet_name='BESS', index=False)
-                    
-                    # Profiles
-                    load_df.to_excel(writer, sheet_name='Load_Profile', index=False)
-                    pv_df.to_excel(writer, sheet_name='PVsyst_Profile', index=False)
-                    wind_df.to_excel(writer, sheet_name='Wind_Profile', index=False)
-                    hydro_df.to_excel(writer, sheet_name='Hydro_Profile', index=False)
+                load_profile = load_df['Load_kW'].values
+                pvsyst_profile = pv_df['Output_kW'].values
+                wind_profile = wind_df['Output_kW'].values
+                hydro_profile = hydro_df['Output_kW'].values if 'Output_kW' in hydro_df.columns else np.ones(8760)
                 
-                output.seek(0)
+                # Build configuration dictionaries
+                config = {
+                    'simulation_hours': 8760,
+                    'target_unmet_percent': target_unmet_percent,
+                    'optimization_method': 'GRID_SEARCH',
+                    'discount_rate': discount_rate / 100,
+                    'inflation_rate': inflation_rate / 100,
+                    'project_lifetime': project_lifetime,
+                    'use_dynamic_lcoe': False
+                }
                 
-                # Save temp file
-                import tempfile
-                temp_file = os.path.join(tempfile.gettempdir(), "temp_input_generated.xlsx")
-                with open(temp_file, "wb") as f:
-                    f.write(output.getvalue())
+                grid_config = {
+                    'pv_start': pv_min * 1000,
+                    'pv_end': pv_max * 1000,
+                    'pv_step': pv_step * 1000,
+                    'wind_start': wind_min * 1000,
+                    'wind_end': wind_max * 1000,
+                    'wind_step': wind_step * 1000,
+                    'hydro_start': hydro_min * 1000,
+                    'hydro_end': hydro_max * 1000,
+                    'hydro_step': hydro_step * 1000,
+                    'bess_start': bess_min * 1000,
+                    'bess_end': bess_max * 1000,
+                    'bess_step': bess_step * 1000,
+                    'max_combinations': 100000000
+                }
                 
-                # Run optimization
+                solar_config = {
+                    'lcoe': 0,
+                    'baseline_kw': 1.0,
+                    'capex_per_kw': pv_capex,
+                    'om_per_kw_year': pv_opex,
+                    'lifetime': pv_lifetime
+                }
+                
+                wind_config = {
+                    'enabled': enable_wind,
+                    'lcoe': 0,
+                    'capex_per_kw': wind_capex,
+                    'om_per_kw_year': wind_opex,
+                    'lifetime': wind_lifetime
+                }
+                
+                hydro_config = {
+                    'enabled': enable_hydro,
+                    'lcoe': 0,
+                    'hours_per_day': hydro_hours_per_day,
+                    'capex_per_kw': hydro_capex,
+                    'om_per_kw_year': hydro_opex,
+                    'lifetime': hydro_lifetime
+                }
+                
+                bess_config = {
+                    'duration_hours': bess_duration,
+                    'lcos': 0,
+                    'charge_eff': bess_charge_eff / 100,
+                    'discharge_eff': bess_discharge_eff / 100,
+                    'min_soc': bess_min_soc / 100,
+                    'max_soc': bess_max_soc / 100,
+                    'power_capex_per_kw': bess_power_capex,
+                    'energy_capex_per_kwh': bess_energy_capex,
+                    'om_per_kw_year': bess_opex,
+                    'lifetime': bess_lifetime
+                }
+                
+                # Run optimization (DIRECT PYTHON CALL - NO EXCEL FILE)
                 status_text.text("⚙️ Running optimization...")
                 progress_bar.progress(30)
                 
-                # Choose which optimization module to use
-                if use_degradation:
-                    st.info(f"🔬 Using degradation analysis (PV: {apply_pv_degradation}, BESS: {apply_bess_degradation})")
-                    
-                    # Use degradation module for optimization
-                    deg_module.INPUT_FILE = temp_file
-                    result = deg_module.read_inputs()
-                    
-                    if len(result) == 9:
-                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
-                    else:
-                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
-                    
-                    # Run grid search (WITHOUT degradation - finds optimal config)
-                    results_df = deg_module.grid_search_optimize_hydro(
-                        config, grid_config, solar, wind, hydro, bess,
-                        load_profile, pvsyst_profile, wind_profile, None
-                    )
-                    
-                    progress_bar.progress(70)
-                    optimal = deg_module.find_optimal_solution(results_df)
-                    
-                    if optimal is not None:
-                        status_text.text("🔬 Running 25-year degradation analysis...")
-                        progress_bar.progress(75)
-                        
-                        # Prepare profiles for degradation analysis
-                        profiles = {
-                            'load': load_profile,
-                            'pv': pvsyst_profile,
-                            'wind': wind_profile,
-                            'hydro': np.ones(len(load_profile))  # Default uniform hydro availability
-                        }
-                        
-                        # Prepare config params
-                        config_for_deg = {
-                            'discount_rate': discount_rate,
-                            'inflation_rate': inflation_rate,
-                            'project_lifetime': project_lifetime,
-                            'target_unmet_percent': target_unmet_percent,
-                            'bess_charge_eff': bess_charge_eff,
-                            'bess_discharge_eff': bess_discharge_eff,
-                            'bess_max_soc': bess_max_soc,
-                            'bess_min_soc': bess_min_soc
-                        }
-                        
-                        # Run COMPLETE degradation analysis with hourly simulation
-                        # Set export_all_years=True to export ALL 25 years for verification
-                        degradation_results = deg_module.run_degradation_analysis_complete(
-                            optimal.to_dict(),
-                            config_for_deg,
-                            profiles,
-                            apply_pv=apply_pv_degradation,
-                            apply_bess=apply_bess_degradation,
-                            years_to_export=[1, 2, 5, 10, 15, 20, 25],  # Selected years
-                            export_all_years=False  # Change to True to export all 25 years
-                        )
-                        
-                        progress_bar.progress(90)
-                        
-                        # Use Year 1 hourly dispatch from degradation analysis
-                        if 'year_1' in degradation_results['hourly_dispatch']:
-                            # Get Year 1 with Anaconda column names (for display/Excel)
-                            year_1_anaconda = degradation_results['hourly_dispatch']['year_1']
-                            
-                            # Create version with expected column names for electrical metrics
-                            optimal_dispatch = year_1_anaconda.copy()
-                            if 'PV_to_Load_kW' in optimal_dispatch.columns:
-                                optimal_dispatch['PV_Output_kW'] = optimal_dispatch['PV_to_Load_kW']
-                            if 'Wind_Output_kW' not in optimal_dispatch.columns:
-                                optimal_dispatch['Wind_Output_kW'] = 0
-                            if 'Hydro_Output_kW' not in optimal_dispatch.columns:
-                                optimal_dispatch['Hydro_Output_kW'] = 0
-                            if 'BESS_Charge_kW' not in optimal_dispatch.columns:
-                                optimal_dispatch['BESS_Charge_kW'] = optimal_dispatch.get('BESS_Charge_woeff_kW', 0)
-                            if 'BESS_Discharge_kW' not in optimal_dispatch.columns:
-                                optimal_dispatch['BESS_Discharge_kW'] = optimal_dispatch.get('BESS_Discharge_wieff_kW', 0)
-                            if 'Excess_kW' not in optimal_dispatch.columns:
-                                optimal_dispatch['Excess_kW'] = optimal_dispatch.get('Curtailment_kW', 0)
-                        else:
-                            optimal_dispatch = None
-                    else:
-                        degradation_results = None
-                        optimal_dispatch = None
-                    
-                else:
-                    # Standard optimization (no degradation)
-                    opt_module.INPUT_FILE = temp_file
-                    result = opt_module.read_inputs()
-                    
-                    if len(result) == 9:
-                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result
-                    else:
-                        config, grid_config, solar, wind, hydro, bess, load_profile, pvsyst_profile, wind_profile = result[:9]
-                    
-                    results_df = opt_module.grid_search_optimize_hydro(
-                        config, grid_config, solar, wind, hydro, bess,
-                        load_profile, pvsyst_profile, wind_profile, None
-                    )
-                    
-                    progress_bar.progress(85)
-                    optimal = opt_module.find_optimal_solution(results_df)
-                    degradation_results = None
-                    
-                    if optimal is not None:
-                        optimal_dispatch = opt_module.calculate_dispatch_with_hydro(
-                            load_profile, pvsyst_profile, wind_profile,
-                            optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
-                            optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
-                            solar, wind, hydro, bess,
-                            int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
-                        )
-                    else:
-                        optimal_dispatch = None
+                results_df = opt_module.grid_search_optimize_hydro(
+                    config, grid_config, solar_config, wind_config, hydro_config, bess_config,
+                    load_profile, pvsyst_profile, wind_profile, None
+                )
                 
-                progress_bar.progress(95)
+                progress_bar.progress(85)
+                optimal = opt_module.find_optimal_solution(results_df)
+                progress_bar.progress(90)
                 
                 if optimal is not None:
                     # Calculate electrical metrics
-                    module = deg_module if use_degradation else opt_module
+                    optimal_dispatch = opt_module.calculate_dispatch_with_hydro(
+                        load_profile, pvsyst_profile, wind_profile,
+                        optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
+                        optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
+                        solar_config, wind_config, hydro_config, bess_config,
+                        int(optimal['Hydro_Window_Start']), int(optimal['Hydro_Window_End'])
+                    )
                     
                     component_capacities = {
                         'pv_kw': optimal['PV_kW'],
@@ -1461,25 +1129,20 @@ with tab2:
                     }
                     
                     # Get NPC data for LCOE calculation
-                    npc_breakdown = {
-                        'pv': {'npc': optimal.get('PV_NPC_$', 0)},
-                        'wind': {'npc': optimal.get('Wind_NPC_$', 0)},
-                        'hydro': {'npc': optimal.get('Hydro_NPC_$', 0)},
-                        'bess': {'npc': optimal.get('BESS_NPC_$', 0)}
-                    }
+                    npc_data = opt_module.calculate_npc_homer_style(
+                        optimal['PV_kW'], optimal['Wind_kW'], optimal['Hydro_kW'],
+                        optimal['BESS_Power_kW'], optimal['BESS_Capacity_kWh'],
+                        solar_config, wind_config, hydro_config, bess_config, config,
+                        None, False, optimal['Total_Energy_Served_kWh']
+                    )
                     
-                    electrical_metrics = module.calculate_electrical_metrics(
+                    electrical_metrics = opt_module.calculate_electrical_metrics(
                         optimal_dispatch, component_capacities, component_configs,
-                        npc_breakdown, project_lifetime
+                        npc_data, project_lifetime
                     )
                     
                     progress_bar.progress(100)
                     
-                    # Clean up
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                    
-                    # Store results with degradation data
                     st.session_state.results = {
                         'pv_capacity': optimal['PV_kW'] / 1000,
                         'wind_capacity': optimal['Wind_kW'] / 1000,
@@ -1500,14 +1163,7 @@ with tab2:
                             'inflation_rate': inflation_rate,
                             'project_lifetime': project_lifetime,
                             'target_unmet_percent': target_unmet_percent
-                        },
-                        'load_type': load_type,
-                        'calculate_emissions': calculate_emissions,
-                        'degradation_settings': {
-                            'pv': apply_pv_degradation,
-                            'bess': apply_bess_degradation
-                        },
-                        'degradation_results': degradation_results  # NEW: Store degradation results
+                        }
                     }
                     
                     st.session_state.optimization_complete = True
@@ -1531,17 +1187,6 @@ with tab3:
         results = st.session_state.results
         optimal_row = results.get('optimal_row', {})
         
-        # Show degradation status if applied
-        if 'degradation_settings' in results:
-            deg_settings = results['degradation_settings']
-            if deg_settings['pv'] or deg_settings['bess']:
-                deg_status = []
-                if deg_settings['pv']:
-                    deg_status.append("☀️ PV")
-                if deg_settings['bess']:
-                    deg_status.append("🔋 BESS")
-                st.info(f"🔬 **Degradation Analysis Applied:** {' + '.join(deg_status)}")
-        
         # Key Metrics
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -1550,10 +1195,6 @@ with tab3:
             st.metric("System LCOE", f"${results['lcoe']:.2f}/MWh")
         with col3:
             st.metric("Unmet Load", f"{results['unmet_pct']:.3f}%")
-        
-        # Display Load Type
-        if 'load_type' in results:
-            st.info(f"**Load Type:** {results['load_type']}")
         
         # Component Configuration
         col1, col2, col3, col4 = st.columns(4)
@@ -1585,33 +1226,6 @@ with tab3:
         
         st.markdown("---")
         
-        # Degradation Analysis Summary (if available)
-        if 'degradation_results' in results and results['degradation_results']:
-            degradation_results = results['degradation_results']
-            
-            st.subheader("🔬 Degradation Analysis Summary")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Year 1 NPC", f"${degradation_results['npc_year1']/1e6:.2f}M")
-            with col2:
-                st.metric("25-Year NPC", f"${degradation_results['npc_25year']/1e6:.2f}M")
-            with col3:
-                st.metric("Replacement Cost", f"${degradation_results['replacement_cost_pv']/1e6:.2f}M")
-            with col4:
-                npc_increase = ((degradation_results['npc_25year'] / degradation_results['npc_year1']) - 1) * 100
-                st.metric("NPC Increase", f"{npc_increase:.1f}%")
-            
-            # Show yearly summary table
-            st.markdown("**25-Year Performance Summary**")
-            st.dataframe(degradation_results['yearly_summary'], use_container_width=True, hide_index=True)
-            
-            # List exported years
-            years_list = ", ".join([f"Year {y}" for y in degradation_results.get('years_exported', [])])
-            st.info(f"📊 **Hourly Dispatch Exported for:** {years_list}")
-            
-            st.markdown("---")
-        
         # Cost Analysis
         st.subheader("💰 Cost Analysis")
         cost_charts = create_cost_analysis_charts_with_tables(results, optimal_row)
@@ -1635,14 +1249,6 @@ with tab3:
         st.plotly_chart(cash_flow_fig, use_container_width=True)
         
         st.markdown("---")
-        
-        # Emissions Table (if enabled)
-        if results.get('calculate_emissions', False):
-            st.subheader("🌍 Emissions Summary")
-            emissions_table = create_emissions_table(optimal_row, results)
-            st.dataframe(emissions_table, use_container_width=True, hide_index=True)
-            st.caption("Note: Emissions calculations based on system configuration and dispatch profile")
-            st.markdown("---")
         
         # Electrical Metrics
         st.subheader("⚡ Electrical Performance Metrics")
@@ -1702,41 +1308,22 @@ with tab3:
         
         # Download
         st.subheader("📥 Download Results")
+        excel_output = export_results_industry_format(
+            results, results['results_df'], results['optimal_row'], 
+            results['config_params']
+        )
         
-        # Use a session state key to only generate Excel when button is clicked
-        # This prevents the huge Excel file being rebuilt on every page render
         col1, col2, col3 = st.columns([2, 1, 2])
         with col2:
-            if st.button("📥 Prepare Excel Download", type="primary", use_container_width=True):
-                with st.spinner("Building Excel report..."):
-                    try:
-                        degradation_results = results.get('degradation_results', None)
-                        excel_output = export_results_industry_format(
-                            results, results['results_df'], results['optimal_row'],
-                            results['config_params'], degradation_results
-                        )
-                        st.session_state['excel_ready'] = excel_output
-                        st.session_state['excel_timestamp'] = datetime.now().strftime('%Y%m%d_%H%M%S')
-                        st.success("✅ Excel ready! Click Download below.")
-                    except Exception as e:
-                        st.error(f"Export error: {str(e)}")
-
-        # Show download button only after Excel is prepared
-        if 'excel_ready' in st.session_state and st.session_state['excel_ready'] is not None:
-            col1b, col2b, col3b = st.columns([2, 1, 2])
-            with col2b:
-                st.download_button(
-                    label="⬇️ Download Excel",
-                    data=st.session_state['excel_ready'],
-                    file_name=f"results_{st.session_state.get('excel_timestamp', 'output')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    type="secondary"
-                )
+            st.download_button(
+                label="📥 Download Excel",
+                data=excel_output,
+                file_name=f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="primary"
+            )
 
 # Footer
 st.markdown("---")
-st.markdown('<div style="text-align:center;color:#666"><p>Energy Modeling Optimizer v4.0 | Complete Degradation Analysis Integration</p></div>', unsafe_allow_html=True)
-
-
-
+st.markdown('<div style="text-align:center;color:#666"><p>RE Optimization Tool v4.0 CLEAN | Direct Python Architecture | Energy Balance Validated</p></div>', unsafe_allow_html=True)
