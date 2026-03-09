@@ -1279,92 +1279,56 @@ def run_multi_year_degradation_analysis(
 
 
 # ==============================================================================
-# PRESET DEGRADATION DATA
+# BESS DEGRADATION PRESET LOADING FROM CSV FILES
 # ==============================================================================
 
-# BESS degradation presets based on battery chemistry (from user's data)
-BESS_DEGRADATION_PRESETS = {
-    "Lithium NMC (Standard)": {
-        1: {'capacity': 97.32, 'charge_eff': 88.84, 'discharge_eff': 98.50},
-        2: {'capacity': 95.06, 'charge_eff': 88.75, 'discharge_eff': 98.50},
-        3: {'capacity': 93.01, 'charge_eff': 88.55, 'discharge_eff': 98.50},
-        4: {'capacity': 91.10, 'charge_eff': 88.47, 'discharge_eff': 98.50},
-        5: {'capacity': 89.27, 'charge_eff': 88.27, 'discharge_eff': 98.50},
-        6: {'capacity': 87.50, 'charge_eff': 88.09, 'discharge_eff': 98.50},
-        7: {'capacity': 85.76, 'charge_eff': 87.99, 'discharge_eff': 98.50},
-        8: {'capacity': 84.05, 'charge_eff': 87.81, 'discharge_eff': 98.50},
-        9: {'capacity': 82.37, 'charge_eff': 87.61, 'discharge_eff': 98.50},
-        10: {'capacity': 80.73, 'charge_eff': 87.52, 'discharge_eff': 98.50},
-        11: {'capacity': 79.12, 'charge_eff': 87.43, 'discharge_eff': 98.50},
-        12: {'capacity': 77.54, 'charge_eff': 87.33, 'discharge_eff': 98.50},
-        13: {'capacity': 75.99, 'charge_eff': 87.24, 'discharge_eff': 98.50},
-        14: {'capacity': 74.48, 'charge_eff': 87.14, 'discharge_eff': 98.50},
-        15: {'capacity': 72.99, 'charge_eff': 87.14, 'discharge_eff': 98.50},
-        16: {'capacity': 71.53, 'charge_eff': 87.05, 'discharge_eff': 98.50},
-        17: {'capacity': 70.10, 'charge_eff': 86.96, 'discharge_eff': 98.50},
-        18: {'capacity': 68.70, 'charge_eff': 86.84, 'discharge_eff': 98.50},
-        19: {'capacity': 67.32, 'charge_eff': 86.72, 'discharge_eff': 98.50},
-        20: {'capacity': 65.98, 'charge_eff': 86.58, 'discharge_eff': 98.50},
-        21: {'capacity': 97.32, 'charge_eff': 88.84, 'discharge_eff': 98.50},  # Replacement
-        22: {'capacity': 95.06, 'charge_eff': 88.75, 'discharge_eff': 98.50},
-        23: {'capacity': 93.01, 'charge_eff': 88.55, 'discharge_eff': 98.50},
-        24: {'capacity': 91.10, 'charge_eff': 88.47, 'discharge_eff': 98.50},
-        25: {'capacity': 89.27, 'charge_eff': 88.27, 'discharge_eff': 98.50},
-    },
+def load_bess_degradation_from_csv(csv_path):
+    """
+    Load BESS degradation data from CSV file.
     
-    "Lithium LFP (Long Life)": {
-        1: {'capacity': 98.50, 'charge_eff': 90.00, 'discharge_eff': 98.50},
-        2: {'capacity': 97.80, 'charge_eff': 89.90, 'discharge_eff': 98.50},
-        3: {'capacity': 97.20, 'charge_eff': 89.80, 'discharge_eff': 98.50},
-        4: {'capacity': 96.60, 'charge_eff': 89.70, 'discharge_eff': 98.50},
-        5: {'capacity': 96.00, 'charge_eff': 89.60, 'discharge_eff': 98.50},
-        6: {'capacity': 95.50, 'charge_eff': 89.50, 'discharge_eff': 98.50},
-        7: {'capacity': 95.00, 'charge_eff': 89.40, 'discharge_eff': 98.50},
-        8: {'capacity': 94.50, 'charge_eff': 89.30, 'discharge_eff': 98.50},
-        9: {'capacity': 94.00, 'charge_eff': 89.20, 'discharge_eff': 98.50},
-        10: {'capacity': 93.50, 'charge_eff': 89.10, 'discharge_eff': 98.50},
-        11: {'capacity': 93.00, 'charge_eff': 89.00, 'discharge_eff': 98.50},
-        12: {'capacity': 92.60, 'charge_eff': 88.95, 'discharge_eff': 98.50},
-        13: {'capacity': 92.20, 'charge_eff': 88.90, 'discharge_eff': 98.50},
-        14: {'capacity': 91.80, 'charge_eff': 88.85, 'discharge_eff': 98.50},
-        15: {'capacity': 91.40, 'charge_eff': 88.80, 'discharge_eff': 98.50},
-        16: {'capacity': 91.00, 'charge_eff': 88.75, 'discharge_eff': 98.50},
-        17: {'capacity': 90.60, 'charge_eff': 88.70, 'discharge_eff': 98.50},
-        18: {'capacity': 90.20, 'charge_eff': 88.65, 'discharge_eff': 98.50},
-        19: {'capacity': 89.80, 'charge_eff': 88.60, 'discharge_eff': 98.50},
-        20: {'capacity': 89.50, 'charge_eff': 88.55, 'discharge_eff': 98.50},
-        21: {'capacity': 89.20, 'charge_eff': 88.50, 'discharge_eff': 98.50},
-        22: {'capacity': 88.90, 'charge_eff': 88.45, 'discharge_eff': 98.50},
-        23: {'capacity': 88.60, 'charge_eff': 88.40, 'discharge_eff': 98.50},
-        24: {'capacity': 88.30, 'charge_eff': 88.35, 'discharge_eff': 98.50},
-        25: {'capacity': 88.00, 'charge_eff': 88.30, 'discharge_eff': 98.50},
-    },
+    Args:
+        csv_path: Path to CSV file with BESS degradation data
     
-    "Sodium-Ion (Emerging)": {
-        1: {'capacity': 95.00, 'charge_eff': 85.00, 'discharge_eff': 95.00},
-        2: {'capacity': 94.20, 'charge_eff': 84.90, 'discharge_eff': 95.00},
-        3: {'capacity': 93.40, 'charge_eff': 84.80, 'discharge_eff': 95.00},
-        4: {'capacity': 92.60, 'charge_eff': 84.70, 'discharge_eff': 95.00},
-        5: {'capacity': 91.80, 'charge_eff': 84.60, 'discharge_eff': 95.00},
-        6: {'capacity': 91.00, 'charge_eff': 84.50, 'discharge_eff': 95.00},
-        7: {'capacity': 90.20, 'charge_eff': 84.40, 'discharge_eff': 95.00},
-        8: {'capacity': 89.50, 'charge_eff': 84.30, 'discharge_eff': 95.00},
-        9: {'capacity': 88.80, 'charge_eff': 84.20, 'discharge_eff': 95.00},
-        10: {'capacity': 88.10, 'charge_eff': 84.10, 'discharge_eff': 95.00},
-        11: {'capacity': 87.50, 'charge_eff': 84.00, 'discharge_eff': 95.00},
-        12: {'capacity': 86.90, 'charge_eff': 83.95, 'discharge_eff': 95.00},
-        13: {'capacity': 86.30, 'charge_eff': 83.90, 'discharge_eff': 95.00},
-        14: {'capacity': 85.80, 'charge_eff': 83.85, 'discharge_eff': 95.00},
-        15: {'capacity': 85.30, 'charge_eff': 83.80, 'discharge_eff': 95.00},
-        16: {'capacity': 84.80, 'charge_eff': 83.75, 'discharge_eff': 95.00},
-        17: {'capacity': 84.30, 'charge_eff': 83.70, 'discharge_eff': 95.00},
-        18: {'capacity': 83.80, 'charge_eff': 83.65, 'discharge_eff': 95.00},
-        19: {'capacity': 83.40, 'charge_eff': 83.60, 'discharge_eff': 95.00},
-        20: {'capacity': 83.00, 'charge_eff': 83.55, 'discharge_eff': 95.00},
-        21: {'capacity': 82.60, 'charge_eff': 83.50, 'discharge_eff': 95.00},
-        22: {'capacity': 82.20, 'charge_eff': 83.45, 'discharge_eff': 95.00},
-        23: {'capacity': 81.80, 'charge_eff': 83.40, 'discharge_eff': 95.00},
-        24: {'capacity': 81.50, 'charge_eff': 83.35, 'discharge_eff': 95.00},
-        25: {'capacity': 81.20, 'charge_eff': 83.30, 'discharge_eff': 95.00},
-    }
-}
+    Returns:
+        Dictionary with year -> {'capacity': %, 'charge_eff': %, 'discharge_eff': %}
+    
+    CSV Format:
+        Year,Capacity_Retention_%,Charging_Efficiency_%,Discharging_Efficiency_%
+        1,97.32,88.84,98.50
+        2,95.06,88.75,98.50
+        ...
+    """
+    try:
+        df = pd.read_csv(csv_path)
+        
+        # Validate columns
+        required_cols = ['Year', 'Capacity_Retention_%', 'Charging_Efficiency_%', 'Discharging_Efficiency_%']
+        if not all(col in df.columns for col in required_cols):
+            print(f"❌ Error: CSV must have columns: {', '.join(required_cols)}")
+            return None
+        
+        # Convert to dictionary
+        deg_data = {}
+        for _, row in df.iterrows():
+            year = int(row['Year'])
+            deg_data[year] = {
+                'capacity': float(row['Capacity_Retention_%']),
+                'charge_eff': float(row['Charging_Efficiency_%']),
+                'discharge_eff': float(row['Discharging_Efficiency_%'])
+            }
+        
+        print(f"✓ Loaded BESS degradation data: {len(deg_data)} years from {csv_path}")
+        return deg_data
+        
+    except Exception as e:
+        print(f"❌ Error loading BESS degradation CSV: {str(e)}")
+        return None
+
+
+# Note: BESS degradation presets are now loaded from CSV files
+# Place preset CSV files in the same directory as this script:
+#   - bess_degradation_lithium_nmc.csv
+#   - bess_degradation_lithium_lfp.csv  
+#   - bess_degradation_sodium_ion.csv
+#
+# Or provide your own custom CSV file path
