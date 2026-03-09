@@ -794,12 +794,12 @@ with st.sidebar:
         if wind_file:
             st.success(f"✓ {wind_file.name}")
         
-        # Hydro Profile
+        # Hydro Profile (OPTIONAL)
         hydro_file = st.file_uploader(
-            "💧 Hydro Profile (Required if Hydro enabled)",
+            "💧 Hydro Profile (Optional - for variable hydro)",
             type=['csv', 'xlsx'],
             key="hydro_file",
-            help="8760-hour hydro availability profile"
+            help="8760-hour hydro availability profile. Optional - if not provided, hydro will be assumed constant 24/7 (like FDDA Project)"
         )
         if hydro_file:
             st.success(f"✓ {hydro_file.name}")
@@ -863,14 +863,18 @@ if not OPTIMIZATION_AVAILABLE:
 if load_file is None:
     validation_errors.append("❌ Load profile is required")
 
+# PV profile REQUIRED if PV is enabled
 if enable_pv and pv_file is None:
     validation_errors.append("❌ PV profile required when PV is enabled")
 
+# Wind profile REQUIRED if Wind is enabled
 if enable_wind and wind_file is None:
     validation_errors.append("❌ Wind profile required when Wind is enabled")
 
+# Hydro profile is OPTIONAL - even if enabled
+# (Hydro can be constant 24/7 like FDDA Project - 250 MW constant)
 if enable_hydro and hydro_file is None:
-    validation_errors.append("❌ Hydro profile required when Hydro is enabled")
+    st.info("ℹ️ Hydro is enabled but no profile uploaded. Will use constant availability (optimizer will determine optimal capacity and operating hours).")
 
 if validation_errors:
     for error in validation_errors:
@@ -890,11 +894,29 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
             status_text.text("📂 Loading input profiles...")
             progress_bar.progress(10)
             
-            # Load data
+            # Load data - check if file exists BEFORE checking .name
             load_df = pd.read_csv(load_file) if load_file.name.endswith('.csv') else pd.read_excel(load_file)
-            pv_df = pd.read_csv(pv_file) if pv_file.name.endswith('.csv') else pd.read_excel(pv_file) if pv_file else pd.DataFrame({'PVsyst_kW': [0]*8760})
-            wind_df = pd.read_csv(wind_file) if wind_file.name.endswith('.csv') else pd.read_excel(wind_file) if wind_file else pd.DataFrame({'Wind_kW': [0]*8760})
-            hydro_df = pd.read_csv(hydro_file) if hydro_file.name.endswith('.csv') else pd.read_excel(hydro_file) if hydro_file else pd.DataFrame({'Hydro_Available_kW': [0]*8760})
+            
+            # PV profile - optional even if PV enabled (will use zeros if not uploaded)
+            if pv_file:
+                pv_df = pd.read_csv(pv_file) if pv_file.name.endswith('.csv') else pd.read_excel(pv_file)
+            else:
+                pv_df = pd.DataFrame({'PVsyst_kW': [0]*8760})
+            
+            # Wind profile - optional even if Wind enabled (will use zeros if not uploaded)
+            if wind_file:
+                wind_df = pd.read_csv(wind_file) if wind_file.name.endswith('.csv') else pd.read_excel(wind_file)
+            else:
+                wind_df = pd.DataFrame({'Wind_kW': [0]*8760})
+            
+            # Hydro profile - OPTIONAL even if Hydro enabled
+            # If not uploaded, use constant 100% availability (like FDDA Project - constant 24/7)
+            if hydro_file:
+                hydro_df = pd.read_csv(hydro_file) if hydro_file.name.endswith('.csv') else pd.read_excel(hydro_file)
+            else:
+                # Use constant 1 kW baseline (100% availability 24/7)
+                # Optimizer will determine optimal capacity and operating hours
+                hydro_df = pd.DataFrame({'Hydro_Available_kW': [1.0]*8760})
             
             # Extract profiles as NumPy arrays
             load_profile = load_df.iloc[:, 0].values if len(load_df.columns) == 1 else load_df['Load_kW'].values
