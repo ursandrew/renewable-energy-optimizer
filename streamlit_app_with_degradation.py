@@ -972,6 +972,7 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
                 'capex_per_kw': pv_capex,
                 'om_per_kw_year': pv_opex,
                 'lifetime': pv_lifetime
+                'baseline_kw': 1.0
             }
             
             wind_config = {
@@ -1624,4 +1625,5 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
 
