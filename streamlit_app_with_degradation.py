@@ -227,7 +227,7 @@ def create_bess_degradation_template():
 
 def create_single_day_dispatch_profile(results):
     """Create single median-PV-day dispatch profile chart."""
-    if 'optimal_dispatch' not in results:
+     if 'optimal_dispatch' not in results or results['optimal_dispatch'] is None:
         return None
     
     dispatch_df = results['optimal_dispatch'].copy()
@@ -1024,7 +1024,25 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
                 st.stop()
             
             progress_bar.progress(70)
-            
+            # Re-run dispatch for optimal solution to get hourly profile
+            status_text.text("📈 Generating optimal dispatch profile...")
+
+            optimal_dispatch_df = opt_module.calculate_dispatch_with_hydro(
+                load_profile,
+                pvsyst_profile,
+                wind_profile,
+                optimal['PV_kW'],
+                optimal['Wind_kW'],
+                optimal['Hydro_kW'],
+                optimal['BESS_Power_kW'],
+                optimal['BESS_Capacity_kWh'],
+                solar_config,
+                wind_config,
+                hydro_config,
+                bess_config,
+                int(optimal['Hydro_Window_Start']),
+                int(optimal['Hydro_Window_End'])
+            )
             # Step 5: Check if degradation analysis is needed
             use_degradation = apply_pv_degradation or apply_bess_degradation
             
@@ -1089,7 +1107,7 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
             st.session_state.results = {
                 'optimal_solution': optimal,
                 'all_results': results_df,
-                'optimal_dispatch': optimal.get('dispatch_df', None),
+                'optimal_dispatch': optimal_dispatch_df,
                 'config': config,
                 'degradation_enabled': use_degradation
             }
@@ -1625,6 +1643,7 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
