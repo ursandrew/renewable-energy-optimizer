@@ -1183,7 +1183,7 @@ if st.session_state.optimization_complete and st.session_state.results is not No
                 delta=f"{optimal['BESS_Capacity_kWh']/1000:.1f} MWh"
             )
         st.markdown("---")
-col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
 
         with col1:
              bess_annual_discharge = results['optimal_dispatch']['BESS_Discharge_wieff_kW'].sum() if results.get('optimal_dispatch') is not None else 0
@@ -1702,6 +1702,7 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
