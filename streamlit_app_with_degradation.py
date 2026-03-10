@@ -1182,7 +1182,21 @@ if st.session_state.optimization_complete and st.session_state.results is not No
                 f"{optimal['BESS_Power_kW']/1000:.2f} MW",
                 delta=f"{optimal['BESS_Capacity_kWh']/1000:.1f} MWh"
             )
-        
+        st.markdown("---")
+col1, col2 = st.columns(2)
+
+        with col1:
+             bess_annual_discharge = results['optimal_dispatch']['BESS_Discharge_wieff_kW'].sum() if results.get('optimal_dispatch') is not None else 0
+             bess_npc_val = optimal.get('BESS_NPC', 0)
+             lcos_val = opt_module.calculate_bess_lcos_from_npc(
+                 bess_npc_val,
+                 bess_annual_discharge,
+                 results['config']['project_lifetime']
+             ) if bess_annual_discharge > 0 else 0
+             st.metric("BESS LCOS", f"${lcos_val*1000:.2f}/MWh")
+
+        with col2:
+             st.metric("Annual BESS Discharge", f"{bess_annual_discharge/1000:.0f} MWh")
         st.markdown("---")
         
         # Key performance metrics
@@ -1238,7 +1252,8 @@ if st.session_state.optimization_complete and st.session_state.results is not No
             with col2:
                 st.metric("Deployed Capacity", f"{bess_deployment['actual_capacity_mwh']:.1f} MWh")
                 st.metric("Deployed Power", f"{bess_deployment['actual_power_mw']:.1f} MW")
-                st.metric("Layout", bess_deployment['layout_description'])
+                st.markdown("**Layout**")
+                st.write(bess_deployment['layout_description'])
             
             with col3:
                 st.metric("Total Area", f"{bess_deployment['total_area_hectares']:.2f} ha ({bess_deployment['total_area_acres']:.2f} acres)")
@@ -1570,51 +1585,95 @@ if st.session_state.optimization_complete and st.session_state.results is not No
                 )
     
     st.markdown("---")
-    
-    # ==============================================================================
-    # EXPORT RESULTS
-    # ==============================================================================
-    
-    st.header("📥 Export Results")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Export optimal configuration
-        export_config = {
-            'PV_MW': optimal['PV_kW'] / 1000,
-            'Wind_MW': optimal['Wind_kW'] / 1000,
-            'Hydro_MW': optimal['Hydro_kW'] / 1000,
-            'BESS_Power_MW': optimal['BESS_Power_kW'] / 1000,
-            'BESS_Capacity_MWh': optimal['BESS_Capacity_kWh'] / 1000,
-            'NPC_$M': optimal['NPC_Total'] / 1_000_000,
-            'LCOE_$/MWh': optimal['LCOE_per_kWh'] * 1000,
-            'Unmet_Load_%': optimal['Unmet_Load_Percent']
+
+# ==============================================================================
+# EXPORT RESULTS - SINGLE EXCEL FILE
+# ==============================================================================
+
+st.header("📥 Export Results")
+
+try:
+    from io import BytesIO
+    import openpyxl
+
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+
+        # ── Sheet 1: Optimal Configuration & KPIs ──
+        bess_annual_discharge = results['optimal_dispatch']['BESS_Discharge_wieff_kW'].sum() if results.get('optimal_dispatch') is not None else 0
+        bess_npc_val = optimal.get('BESS_NPC', 0)
+        lcos = opt_module.calculate_bess_lcos_from_npc(
+            bess_npc_val,
+            bess_annual_discharge,
+            results['config']['project_lifetime']
+        ) if bess_annual_discharge > 0 else 0
+
+        summary_data = {
+            'Parameter': [
+                'PV Capacity (MW)', 'Wind Capacity (MW)', 'Hydro Capacity (MW)',
+                'BESS Power (MW)', 'BESS Energy (MWh)',
+                'Net Present Cost ($M)', 'LCOE ($/MWh)', 'LCOS ($/MWh)',
+                'Unmet Load (%)', 'RE Penetration (%)',
+                'Annual PV Energy (MWh)', 'Annual Wind Energy (MWh)',
+                'Annual Hydro Energy (MWh)', 'Annual Load (MWh)',
+                'Total Capital ($M)', 'Annual O&M ($k)'
+            ],
+            'Value': [
+                round(optimal['PV_kW']/1000, 3),
+                round(optimal['Wind_kW']/1000, 3),
+                round(optimal['Hydro_kW']/1000, 3),
+                round(optimal['BESS_Power_kW']/1000, 3),
+                round(optimal['BESS_Capacity_kWh']/1000, 3),
+                round(optimal['NPC_Total']/1_000_000, 4),
+                round(optimal['LCOE_per_kWh']*1000, 4),
+                round(lcos*1000, 4),
+                round(optimal['Unmet_Load_Percent'], 4),
+                round((optimal['PV_Energy_kWh'] + optimal['Wind_Energy_kWh'] + optimal['Hydro_Energy_kWh']) / optimal['Total_Load_kWh'] * 100, 2),
+                round(optimal['PV_Energy_kWh']/1000, 1),
+                round(optimal['Wind_Energy_kWh']/1000, 1),
+                round(optimal['Hydro_Energy_kWh']/1000, 1),
+                round(optimal['Total_Load_kWh']/1000, 1),
+                round(optimal['CapEx_Total']/1_000_000, 4),
+                round(optimal['OpEx_Annual']/1000, 2)
+            ]
         }
-        
-        export_df = pd.DataFrame([export_config])
-        csv_config = export_df.to_csv(index=False).encode('utf-8')
-        
-        st.download_button(
-            label="📊 Download Optimal Configuration (CSV)",
-            data=csv_config,
-            file_name=f"optimal_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-    
-    with col2:
-        # Export all results
+        pd.DataFrame(summary_data).to_excel(writer, sheet_name='Optimal Configuration', index=False)
+
+        # ── Sheet 2: All Combinations ──
         if 'all_results' in results:
-            all_results_csv = results['all_results'].to_csv(index=False).encode('utf-8')
-            
-            st.download_button(
-                label="📋 Download All Combinations (CSV)",
-                data=all_results_csv,
-                file_name=f"all_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+            results['all_results'].to_excel(writer, sheet_name='All Combinations', index=False)
+
+        # ── Sheet 3: Hourly Dispatch (Optimal Year 1) ──
+        if results.get('optimal_dispatch') is not None:
+            results['optimal_dispatch'].to_excel(writer, sheet_name='Dispatch Year 1', index=False)
+
+        # ── Sheets 4+: Degradation year dispatches ──
+        if results.get('degradation_enabled') and 'degradation_analysis' in results:
+            deg_data = results['degradation_analysis']
+
+            # Yearly summary sheet
+            deg_data['yearly_metrics'].to_excel(writer, sheet_name='Degradation Summary', index=False)
+
+            # Individual year dispatch sheets
+            for year_key, dispatch_df in deg_data['selected_year_dispatch'].items():
+                year_num = year_key.split('_')[1]
+                sheet_name = f'Dispatch Year {year_num}'
+                dispatch_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    output.seek(0)
+
+    st.download_button(
+        label="📥 Download Full Results (Excel - All Sheets)",
+        data=output.getvalue(),
+        file_name=f"optimization_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        type="primary"
+    )
+
+except ImportError:
+    st.error("❌ openpyxl not installed. Run: pip install openpyxl")
     
     # Export dispatch profile if available
     if 'optimal_dispatch' in results and results['optimal_dispatch'] is not None:
@@ -1643,6 +1702,7 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
