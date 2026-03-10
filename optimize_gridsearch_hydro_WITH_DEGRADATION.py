@@ -154,7 +154,8 @@ def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
                                   pv_capacity, wind_capacity, hydro_capacity,
                                   bess_power, bess_capacity,
                                   solar_config, wind_config, hydro_config, bess_config,
-                                  hydro_window_start, hydro_window_end):
+                                  hydro_window_start, hydro_window_end,
+                                  initial_soc_kwh=None):
     """
     Calculate hourly dispatch for PV + Wind + Hydro + BESS system.
     
@@ -204,7 +205,11 @@ def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
     unmet_load = np.zeros(hours)
     
     # Start with 50% SOC
-    current_soc = 0.5 * bess_capacity
+    # Start with provided SOC or default to 50%
+    if initial_soc_kwh is not None:
+        current_soc = float(initial_soc_kwh)
+    else:
+        current_soc = 0.5 * bess_capacity
     
     for h in range(hours):
         hour_of_day = h % 24
@@ -364,6 +369,8 @@ def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
         results['Energy_Balance_RHS_kW']
     )
     
+    results._final_soc_kwh = current_soc
+
     return results
 
 
@@ -1153,9 +1160,10 @@ def run_multi_year_degradation_analysis(
     optimal_config, load_profile, pvsyst_profile, wind_profile,
     solar_config, wind_config, hydro_config, bess_config,
     project_lifetime=25,
-    pv_degradation_type=None,  # 'simple' or 'curve' or None
-    pv_degradation_data=None,  # annual_rate OR curve dict
-    bess_degradation_data=None  # BESS degradation dict or None
+    pv_degradation_type=None,
+    pv_degradation_data=None,
+    bess_degradation_data=None,
+    initial_soc_percent=50.0   # hardcoded default, easy to change later
 ):
     """
     Run degradation analysis for all project years.
@@ -1189,6 +1197,10 @@ def run_multi_year_degradation_analysis(
     baseline_pv_energy = optimal_config.get('PV_Energy_kWh', 0)
     baseline_bess_capacity = optimal_config.get('BESS_Capacity_kWh', 0)
     
+    carry_soc_kwh = (initial_soc_percent / 100) * optimal_config.get('BESS_Capacity_kWh', 0)
+
+    print(f"\n  Starting SOC: {initial_soc_percent:.1f}% = {carry_soc_kwh:.1f} kWh")
+
     for year in range(1, project_lifetime + 1):
         if year % 5 == 0 or year == 1:
             print(f"  Processing Year {year}...")
@@ -1230,6 +1242,7 @@ def run_multi_year_degradation_analysis(
             bess_retention_pct = 100
         
         # Run dispatch simulation for this year
+       # Run dispatch simulation for this year with carry-forward SOC
         dispatch_df = calculate_dispatch_with_hydro(
             load_profile,
             pv_gen_degraded,
@@ -1244,8 +1257,16 @@ def run_multi_year_degradation_analysis(
             hydro_config,
             bess_config_degraded,
             int(optimal_config.get('Hydro_Window_Start', 0)),
-            int(optimal_config.get('Hydro_Window_End', 24))
+            int(optimal_config.get('Hydro_Window_End', 24)),
+            initial_soc_kwh=carry_soc_kwh   # ← pass last year's ending SOC
         )
+
+        # Carry SOC forward to next year
+        carry_soc_kwh = getattr(dispatch_df, '_final_soc_kwh', carry_soc_kwh)
+
+        if year % 5 == 0 or year <= 2:
+            ending_soc_pct = (carry_soc_kwh / bess_capacity_degraded * 100) if bess_capacity_degraded > 0 else 0
+            print(f"    Year {year} ending SOC: {carry_soc_kwh:.1f} kWh ({ending_soc_pct:.1f}%)")
         
         # Calculate annual metrics
         total_load = dispatch_df['Load_kW'].sum()
