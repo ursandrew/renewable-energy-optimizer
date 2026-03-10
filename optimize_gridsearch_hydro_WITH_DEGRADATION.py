@@ -1003,30 +1003,53 @@ def find_optimal_solution(results_df):
     
     optimal = feasible.loc[feasible['NPC_$'].idxmin()]
     
+    # ── Translate column names to match Streamlit app expectations ──
+    translated = optimal.copy()
+    translated['NPC_Total']            = optimal['NPC_$']
+    translated['CapEx_Total']          = optimal['Capital_$']
+    translated['OpEx_Annual']          = optimal['Annualized_$/yr']  # closest proxy
+    translated['LCOE_per_kWh']         = optimal['LCOE_$/kWh']
+    translated['Unmet_Load_Percent']   = optimal['Unmet_%']
+    translated['Unmet_Load_kWh']       = optimal['Unmet_kWh']
+    translated['Total_Curtailment_kWh']= optimal['Excess_kWh']
+    translated['Total_Load_kWh']       = optimal['Total_Load_kWh']
+    
+    # Component NPC
+    translated['PV_NPC']               = optimal['PV_NPC_$']
+    translated['Wind_NPC']             = optimal['Wind_NPC_$']
+    translated['Hydro_NPC']            = optimal['Hydro_NPC_$']
+    translated['BESS_NPC']             = optimal['BESS_NPC_$']
+    
+    # Component CapEx
+    translated['PV_CapEx']             = optimal['PV_Capital_$']
+    translated['Wind_CapEx']           = optimal['Wind_Capital_$']
+    translated['Hydro_CapEx']          = optimal['Hydro_Capital_$']
+    translated['BESS_CapEx']           = optimal['BESS_Capital_$']
+    
+    # Component OpEx (annualized as proxy)
+    translated['PV_OpEx_Annual']       = optimal['PV_Annualized_$/yr']
+    translated['Wind_OpEx_Annual']     = optimal['Wind_Annualized_$/yr']
+    translated['Hydro_OpEx_Annual']    = optimal['Hydro_Annualized_$/yr']
+    translated['BESS_OpEx_Annual']     = optimal['BESS_Annualized_$/yr']
+    
+    # Energy
+    translated['PV_Energy_kWh']        = optimal['PV_Energy_kWh']
+    translated['Wind_Energy_kWh']      = optimal['Wind_Energy_kWh']
+    translated['Hydro_Energy_kWh']     = optimal['Hydro_Energy_kWh']
+
     print("\n" + "="*70)
-    print("✓ OPTIMAL SOLUTION FOUND (CLEAN ARCHITECTURE)!")
+    print("✓ OPTIMAL SOLUTION FOUND")
     print("="*70)
-    print(f"  Iteration:  #{int(optimal['Iteration'])} of {len(results_df)}")
     print(f"  PV:         {optimal['PV_kW']:.0f} kW")
     print(f"  Wind:       {optimal['Wind_kW']:.0f} kW")
-    print(f"  Hydro:      {optimal['Hydro_kW']:.0f} kW (Window: {int(optimal['Hydro_Window_Start']):02d}:00-{int(optimal['Hydro_Window_End']):02d}:00)")
+    print(f"  Hydro:      {optimal['Hydro_kW']:.0f} kW")
     print(f"  BESS Power: {optimal['BESS_Power_kW']:.0f} kW")
-    print(f"  BESS Capacity: {optimal['BESS_Capacity_kWh']:.0f} kWh")
-    print(f"\n  === HOMER-STYLE COSTS ===")
-    print(f"  Total NPC:     ${optimal['NPC_$']:,.2f}")
-    print(f"  Capital:       ${optimal['Capital_$']:,.2f}")
-    print(f"  Replacement:   ${optimal['Replacement_$']:,.2f}")
-    print(f"  O&M:           ${optimal['OM_$']:,.2f}")
-    print(f"  Salvage:       ${optimal['Salvage_$']:,.2f}")
-    print(f"  Annualized:    ${optimal['Annualized_$/yr']:,.2f}/year")
-    print(f"\n  === PERFORMANCE ===")
-    print(f"  LCOE:       ${optimal['LCOE_$/kWh']:.4f}/kWh (${optimal['LCOE_$/MWh']:.2f}/MWh)")
-    print(f"  Unmet Load: {optimal['Unmet_%']:.2f}%")
-    print(f"  Real Rate:  {optimal['Real_Discount_Rate_%']:.4f}%")
-    print(f"  CRF:        {optimal['CRF']:.6f}")
+    print(f"  NPC:        ${optimal['NPC_$']:,.2f}")
+    print(f"  LCOE:       ${optimal['LCOE_$/kWh']:.4f}/kWh")
+    print(f"  Unmet:      {optimal['Unmet_%']:.2f}%")
     print("="*70)
     
-    return optimal
+    return translated
 
 
 # ==============================================================================
