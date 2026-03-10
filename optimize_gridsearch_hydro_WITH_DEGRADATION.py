@@ -1190,7 +1190,7 @@ def run_multi_year_degradation_analysis(
     print("="*70)
     
     yearly_results = []
-    selected_years = [1, 2, 5, 10, 15, 20, 25]
+    selected_years = list(range(1, project_lifetime + 1))
     yearly_dispatch = {}
     
     # Baseline (Year 1) performance
