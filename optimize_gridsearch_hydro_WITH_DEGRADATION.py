@@ -180,8 +180,8 @@ def calculate_dispatch_with_hydro(load_profile, pvsyst_profile, wind_profile,
     max_soc = bess_config['max_soc']
     
     # Calculate SOC limits based on capacity
-    min_soc_kwh = min_soc * bess_capacity
-    max_soc_kwh = max_soc * bess_capacity
+    min_soc_kwh = (min_soc / 100) * bess_capacity
+    max_soc_kwh = (max_soc / 100) * bess_capacity
     
     # Initialize arrays for STANDARDIZED FORMAT
     pv_available = np.zeros(hours)
