@@ -227,7 +227,7 @@ def create_bess_degradation_template():
 
 def create_single_day_dispatch_profile(results):
     """Create single median-PV-day dispatch profile chart."""
-     if 'optimal_dispatch' not in results or results['optimal_dispatch'] is None:
+    if 'optimal_dispatch' not in results or results['optimal_dispatch'] is None:
         return None
     
     dispatch_df = results['optimal_dispatch'].copy()
@@ -1643,6 +1643,7 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
