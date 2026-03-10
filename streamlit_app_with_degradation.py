@@ -988,7 +988,7 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
             }
             
             bess_config = {
-                'duration': bess_duration,
+                'duration_hours': bess_duration,
                 'min_soc': bess_min_soc,
                 'max_soc': bess_max_soc,
                 # Use default efficiencies if degradation active (will be overridden in degradation analysis)
@@ -1624,3 +1624,4 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
