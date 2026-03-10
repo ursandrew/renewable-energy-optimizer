@@ -642,22 +642,7 @@ with st.sidebar:
             with col2:
                 bess_max_soc = st.number_input("Max SOC (%)", value=90.0, min_value=50.0, max_value=100.0, step=5.0, key="bess_max_soc")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                bess_charge_eff = st.number_input("Charge Efficiency (%)", value=90.0, min_value=50.0, max_value=100.0, step=1.0, key="bess_charge_eff")
-            with col2:
-                bess_discharge_eff = st.number_input("Discharge Efficiency (%)", value=95.0, min_value=50.0, max_value=100.0, step=1.0, key="bess_discharge_eff")
-            
-            st.subheader("Financial Parameters")
-            col1, col2 = st.columns(2)
-            with col1:
-                bess_power_capex = st.number_input("Power CapEx ($/kW)", value=300, step=10, key="bess_power_capex")
-                bess_energy_capex = st.number_input("Energy CapEx ($/kWh)", value=300, step=10, key="bess_energy_capex")
-            with col2:
-                bess_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="bess_opex")
-                bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
-            
-            # DEGRADATION SECTION
+            # DEGRADATION CHECKBOX FIRST (to control efficiency inputs)
             st.markdown("---")
             st.subheader("🔬 Advanced Analysis")
             
@@ -668,13 +653,44 @@ with st.sidebar:
                 key="apply_bess_degradation"
             )
             
+            # EFFICIENCY INPUTS - DISABLED when degradation is active
+            st.markdown("---")
             if apply_bess_degradation:
-                # Efficiencies will be controlled by degradation curve
-                bess_charge_eff = None
-                bess_discharge_eff = None
-                
-                st.info("ℹ️ Efficiency values will be controlled by the degradation curve")
-                
+                st.info("ℹ️ Efficiency values will be controlled by the degradation curve (inputs disabled)")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                bess_charge_eff = st.number_input(
+                    "Charge Efficiency (%)", 
+                    value=90.0, 
+                    min_value=50.0, 
+                    max_value=100.0, 
+                    step=1.0, 
+                    key="bess_charge_eff",
+                    disabled=apply_bess_degradation  # DISABLED when degradation active
+                )
+            with col2:
+                bess_discharge_eff = st.number_input(
+                    "Discharge Efficiency (%)", 
+                    value=95.0, 
+                    min_value=50.0, 
+                    max_value=100.0, 
+                    step=1.0, 
+                    key="bess_discharge_eff",
+                    disabled=apply_bess_degradation  # DISABLED when degradation active
+                )
+            
+            st.subheader("Financial Parameters")
+            col1, col2 = st.columns(2)
+            with col1:
+                bess_power_capex = st.number_input("Power CapEx ($/kW)", value=300, step=10, key="bess_power_capex")
+                bess_energy_capex = st.number_input("Energy CapEx ($/kWh)", value=300, step=10, key="bess_energy_capex")
+            with col2:
+                bess_opex = st.number_input("OpEx ($/kW/yr)", value=10, step=1, key="bess_opex")
+                bess_lifetime = st.number_input("Lifetime (years)", value=15, step=1, key="bess_life")
+            
+            # BESS DEGRADATION FILE UPLOAD (shown only when degradation is checked)
+            if apply_bess_degradation:
                 # User uploads BESS degradation CSV file
                 st.markdown("**Upload BESS Degradation Curve:**")
                 
@@ -919,9 +935,10 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
                 hydro_df = pd.DataFrame({'Hydro_Available_kW': [1.0]*8760})
             
             # Extract profiles as NumPy arrays
-            load_profile = load_df.iloc[:, 0].values if len(load_df.columns) == 1 else load_df['Load_kW'].values
-            pvsyst_profile = pv_df.iloc[:, 0].values if len(pv_df.columns) == 1 else pv_df['PVsyst_kW'].values
-            wind_profile = wind_df.iloc[:, 0].values if len(wind_df.columns) == 1 else wind_df['Wind_kW'].values
+            # Use first column if single column, otherwise use named columns
+            load_profile = load_df.iloc[:, 0].values if len(load_df.columns) == 1 else load_df.iloc[:, 1].values
+            pvsyst_profile = pv_df.iloc[:, 0].values if len(pv_df.columns) == 1 else pv_df.iloc[:, 1].values
+            wind_profile = wind_df.iloc[:, 0].values if len(wind_df.columns) == 1 else wind_df.iloc[:, 1].values
             
             progress_bar.progress(20)
             
@@ -974,8 +991,10 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
                 'duration': bess_duration,
                 'min_soc': bess_min_soc,
                 'max_soc': bess_max_soc,
-                'charge_eff': bess_charge_eff / 100,
-                'discharge_eff': bess_discharge_eff / 100,
+                # Use default efficiencies if degradation active (will be overridden in degradation analysis)
+                # Otherwise use user inputs
+                'charge_eff': 0.90 if apply_bess_degradation else (bess_charge_eff / 100),
+                'discharge_eff': 0.95 if apply_bess_degradation else (bess_discharge_eff / 100),
                 'power_capex_per_kw': bess_power_capex,
                 'energy_capex_per_kwh': bess_energy_capex,
                 'om_per_kw_year': bess_opex,
