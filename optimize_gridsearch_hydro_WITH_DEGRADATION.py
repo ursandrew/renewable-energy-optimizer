@@ -1038,7 +1038,34 @@ def find_optimal_solution(results_df):
     translated['Wind_OpEx_Annual']     = optimal['Wind_Annualized_$/yr']
     translated['Hydro_OpEx_Annual']    = optimal['Hydro_Annualized_$/yr']
     translated['BESS_OpEx_Annual']     = optimal['BESS_Annualized_$/yr']
-    
+
+    # Component Replacement PV
+    translated['PV_Replacement']       = optimal['PV_Replacement_$']
+    translated['Wind_Replacement']     = optimal['Wind_Replacement_$']
+    translated['Hydro_Replacement']    = optimal['Hydro_Replacement_$']
+    translated['BESS_Replacement']     = optimal['BESS_Replacement_$']
+
+    # Component O&M PV (present value)
+    translated['PV_OM']                = optimal['PV_OM_$']
+    translated['Wind_OM']              = optimal['Wind_OM_$']
+    translated['Hydro_OM']             = optimal['Hydro_OM_$']
+    translated['BESS_OM']              = optimal['BESS_OM_$']
+
+    # Component Salvage PV
+    translated['PV_Salvage']           = optimal['PV_Salvage_$']
+    translated['Wind_Salvage']         = optimal['Wind_Salvage_$']
+    translated['Hydro_Salvage']        = optimal['Hydro_Salvage_$']
+    translated['BESS_Salvage']         = optimal['BESS_Salvage_$']
+
+    # System-level cost type totals
+    translated['Total_Replacement']    = optimal['Replacement_$']
+    translated['Total_OM']             = optimal['OM_$']
+    translated['Total_Salvage']        = optimal['Salvage_$']
+
+    # Financial parameters (for cash flow chart)
+    translated['Real_Discount_Rate']   = optimal['Real_Discount_Rate_%'] / 100
+    translated['CRF']                  = optimal['CRF']
+
     # Energy
     translated['PV_Energy_kWh']        = optimal['PV_Energy_kWh']
     translated['Wind_Energy_kWh']      = optimal['Wind_Energy_kWh']
