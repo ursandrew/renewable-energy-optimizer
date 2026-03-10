@@ -305,10 +305,10 @@ def create_single_day_dispatch_profile(results):
     ), secondary_y=False)
     
     # BESS SOC on secondary axis
-    if 'BESS_SOC_%' in day_profile.columns:
+    if 'BESS_SOC_pct' in day_profile.columns:
         fig.add_trace(go.Scatter(
             x=day_profile['Hour_of_Day'],
-            y=day_profile['BESS_SOC_%'],
+            y=day_profile['BESS_SOC_pct'],
             name='BESS SOC',
             mode='lines',
             line=dict(color='purple', width=2, dash='dash'),
@@ -1625,6 +1625,7 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
