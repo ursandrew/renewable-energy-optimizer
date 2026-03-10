@@ -1052,7 +1052,7 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
                 bess_deg_data = None
                 
                 if apply_bess_degradation:
-                    if bess_chemistry == "Custom (Upload File)":
+                    if bess_chemistry == "Custom (From CSV)":
                         if bess_deg_file:
                             bess_deg_data = parse_bess_degradation_file(bess_deg_file)
                             if bess_deg_data is None:
@@ -1625,6 +1625,7 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
