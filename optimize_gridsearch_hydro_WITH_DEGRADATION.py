@@ -671,8 +671,20 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
                                 component_npc_data, project_lifetime):
     """
     Calculate electrical performance metrics including actual LCOE from NPC.
+
+    LCOE per component = (Component_NPC × CRF) / Annual_Energy
+    LCOS for BESS      = (BESS_NPC × CRF) / Annual_Throughput
+
+    CRF is extracted from component_npc_data['crf'] which is calculated using
+    the real discount rate (HOMER methodology).
     """
     metrics = {}
+
+    # Extract CRF from NPC data (calculated with real discount rate)
+    crf = component_npc_data.get('crf', None)
+    if crf is None or crf <= 0:
+        # Fallback: recalculate from project lifetime (undiscounted approximation)
+        crf = 1.0 / project_lifetime
 
     # PV Metrics
     if component_capacities['pv_kw'] > 0:
@@ -682,7 +694,7 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         pv_mean_output = pv_output[pv_output > 0].mean() if pv_hours_operation > 0 else 0
         pv_capacity_factor = (pv_total_production / (component_capacities['pv_kw'] * 8760)) * 100
         pv_lcoe = calculate_component_lcoe_from_npc(
-            component_npc_data['pv']['npc'], pv_total_production, project_lifetime
+            component_npc_data['pv']['npc'], pv_total_production, crf
         )
         metrics['pv'] = {
             'rated_capacity_kw': component_capacities['pv_kw'],
@@ -706,7 +718,7 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         wind_mean_output = wind_output[wind_output > 0].mean() if wind_hours_operation > 0 else 0
         wind_capacity_factor = (wind_total_production / (component_capacities['wind_kw'] * 8760)) * 100
         wind_lcoe = calculate_component_lcoe_from_npc(
-            component_npc_data['wind']['npc'], wind_total_production, project_lifetime
+            component_npc_data['wind']['npc'], wind_total_production, crf
         )
         metrics['wind'] = {
             'rated_capacity_kw': component_capacities['wind_kw'],
@@ -730,7 +742,7 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         hydro_mean_output = hydro_output[hydro_output > 0].mean() if hydro_hours_operation > 0 else 0
         hydro_capacity_factor = (hydro_total_production / (component_capacities['hydro_kw'] * 8760)) * 100
         hydro_lcoe = calculate_component_lcoe_from_npc(
-            component_npc_data['hydro']['npc'], hydro_total_production, project_lifetime
+            component_npc_data['hydro']['npc'], hydro_total_production, crf
         )
         metrics['hydro'] = {
             'rated_capacity_kw': component_capacities['hydro_kw'],
@@ -762,7 +774,7 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
         )
         autonomy_hours = usable_capacity / mean_load if mean_load > 0 else 0
         bess_lcos = calculate_bess_lcos_from_npc(
-            component_npc_data['bess']['npc'], annual_throughput, project_lifetime
+            component_npc_data['bess']['npc'], annual_throughput, crf
         )
         metrics['bess'] = {
             'nominal_capacity_kwh': component_capacities['bess_kwh'],
@@ -785,20 +797,57 @@ def calculate_electrical_metrics(dispatch_df, component_capacities, component_co
     return metrics
 
 
-def calculate_component_lcoe_from_npc(component_npc, annual_energy_kwh, project_lifetime):
-    """Calculate component-specific LCOE from NPC and energy production."""
-    if annual_energy_kwh <= 0:
+def calculate_component_lcoe_from_npc(component_npc, annual_energy_kwh, crf):
+    """
+    Calculate component-specific LCOE from NPC and annual energy production.
+
+    Formula: LCOE = (Component_NPC × CRF) / Annual_Energy_kWh
+
+    This is the correct HOMER-equivalent method. The CRF (Capital Recovery Factor)
+    converts the NPC to an equivalent uniform annual cost, which is then divided
+    by annual energy output to get $/kWh.
+
+    Note: The old formula NPC / (E × n) is INCORRECT — it ignores the time value
+    of money (equivalent to assuming a 0% discount rate). At 8% nominal / 2%
+    inflation, CRF ≈ 0.0774 vs 1/25 = 0.040, a ~48% understatement.
+
+    Args:
+        component_npc:     Component Net Present Cost ($)
+        annual_energy_kwh: Annual energy production (kWh/year)
+        crf:               Capital Recovery Factor (real discount rate based)
+
+    Returns:
+        LCOE in $/kWh
+    """
+    if annual_energy_kwh <= 0 or crf <= 0:
         return 0.0
-    total_lifetime_energy = annual_energy_kwh * project_lifetime
-    return component_npc / total_lifetime_energy
+    return (component_npc * crf) / annual_energy_kwh
 
 
-def calculate_bess_lcos_from_npc(bess_npc, annual_throughput_kwh, project_lifetime):
-    """Calculate BESS Levelized Cost of Storage (LCOS) from NPC and throughput."""
-    if annual_throughput_kwh <= 0:
+def calculate_bess_lcos_from_npc(bess_npc, annual_throughput_kwh, crf):
+    """
+    Calculate BESS Levelized Cost of Storage (LCOS) from NPC and annual throughput.
+
+    Formula: LCOS = (BESS_NPC × CRF) / Annual_Throughput_kWh
+
+    This is the correct method consistent with HOMER methodology. CRF converts
+    the NPC into an equivalent annual cost, divided by annual energy discharged.
+
+    Note: The old formula NPC / (throughput × n) is INCORRECT — it ignores the
+    time value of money. At 8% nominal / 2% inflation, this understates LCOS
+    by ~48%.
+
+    Args:
+        bess_npc:              BESS Net Present Cost ($)
+        annual_throughput_kwh: Annual energy discharged (kWh/year)
+        crf:                   Capital Recovery Factor (real discount rate based)
+
+    Returns:
+        LCOS in $/kWh
+    """
+    if annual_throughput_kwh <= 0 or crf <= 0:
         return 0.0
-    total_lifetime_throughput = annual_throughput_kwh * project_lifetime
-    return bess_npc / total_lifetime_throughput
+    return (bess_npc * crf) / annual_throughput_kwh
 
 
 # ==============================================================================
