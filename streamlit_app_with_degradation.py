@@ -366,7 +366,7 @@ def build_excel_export(results, optimal, opt_module):
         lcos = opt_module.calculate_bess_lcos_from_npc(
             bess_npc_val,
             bess_annual_discharge,
-            results['config']['project_lifetime']
+            results['npc_data']['crf']
         )
 
     re_penetration = (
@@ -1141,7 +1141,7 @@ if st.session_state.optimization_complete and st.session_state.results is not No
             if bess_annual_discharge > 0 and hasattr(opt_module, 'calculate_bess_lcos_from_npc'):
                 lcos_val = opt_module.calculate_bess_lcos_from_npc(
                     bess_npc_val, bess_annual_discharge,
-                    results['config']['project_lifetime']
+                    results['npc_data']['crf']
                 )
             st.metric("🔋 BESS LCOS", f"${lcos_val*1000:.2f}/MWh")
         with col2:
@@ -1647,3 +1647,4 @@ st.markdown("""
     <p>Developed by SJ | March 2026</p>
 </div>
 """, unsafe_allow_html=True)
+
