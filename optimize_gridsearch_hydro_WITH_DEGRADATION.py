@@ -929,14 +929,16 @@ def find_optimal_solution(results_df):
 # ==============================================================================
 
 def apply_pv_degradation_simple(pv_profile, year, annual_rate_pct):
-    """Apply PV degradation using simple annual rate."""
+    """Apply PV degradation using simple annual rate.
+    degradation_factor = (1 - rate)^(year-1)  so Year 1 = no degradation.
+    """
     annual_rate = annual_rate_pct / 100
     degradation_factor = (1 - annual_rate) ** (year - 1)
     return pv_profile * degradation_factor
 
 
 def apply_pv_degradation_curve(pv_profile, year, degradation_curve):
-    """Apply PV degradation using custom curve."""
+    """Apply PV degradation using custom cumulative curve {year: cumulative_%}."""
     if year not in degradation_curve:
         return pv_profile
     cumulative_deg_pct = degradation_curve[year]
@@ -944,8 +946,88 @@ def apply_pv_degradation_curve(pv_profile, year, degradation_curve):
     return pv_profile * degradation_factor
 
 
+# ==============================================================================
+# WIND DEGRADATION
+# ==============================================================================
+
+def apply_wind_degradation_simple(wind_profile, year, annual_rate_pct):
+    """Apply wind degradation using simple annual rate.
+    Identical in structure to PV simple degradation.
+    Typical wind turbine degradation: 0.1–0.5%/year (blade erosion, bearing wear).
+    Year 1 = no degradation (factor = 1.0).
+    """
+    annual_rate = annual_rate_pct / 100
+    degradation_factor = (1 - annual_rate) ** (year - 1)
+    return wind_profile * degradation_factor
+
+
+def apply_wind_degradation_curve(wind_profile, year, degradation_curve):
+    """Apply wind degradation using custom cumulative curve {year: cumulative_%}."""
+    if year not in degradation_curve:
+        return wind_profile
+    cumulative_deg_pct = degradation_curve[year]
+    degradation_factor = 1 - (cumulative_deg_pct / 100)
+    return wind_profile * degradation_factor
+
+
+# ==============================================================================
+# HYDRO DEGRADATION
+# ==============================================================================
+
+def apply_hydro_degradation_table(hydro_capacity_kw, year, hydro_deg_table):
+    """Apply hydro degradation using a user-editable year-by-year table.
+
+    Hydro plants are known for very long low-degradation periods (15-20 years),
+    followed by gradual efficiency loss from turbine wear, sediment, cavitation.
+
+    Args:
+        hydro_capacity_kw: Installed hydro capacity (kW)
+        year: Project year (1 to project_lifetime)
+        hydro_deg_table: dict {year: output_factor_%}
+                         e.g. {1: 100, 2: 100, ..., 15: 100, 16: 99.5, ...}
+                         Value = % of original rated capacity available that year.
+
+    Returns:
+        Effective hydro capacity for that year (kW)
+    """
+    if year not in hydro_deg_table:
+        return hydro_capacity_kw  # no data → assume no degradation
+    output_factor_pct = hydro_deg_table[year]
+    return hydro_capacity_kw * (output_factor_pct / 100)
+
+
+def build_default_hydro_deg_table(project_lifetime, stable_years=15, annual_deg_after_pct=0.5):
+    """Build the default hydro degradation table.
+
+    Default behaviour:
+      Years 1 → stable_years  : 100% output (no degradation)
+      Years stable_years+1 → end: compound degradation at annual_deg_after_pct %/year
+
+    Args:
+        project_lifetime: Total project years
+        stable_years: Years with no degradation (default 15)
+        annual_deg_after_pct: Annual degradation rate after stable period (default 0.5%)
+
+    Returns:
+        dict {year: output_factor_%}
+    """
+    table = {}
+    for yr in range(1, project_lifetime + 1):
+        if yr <= stable_years:
+            table[yr] = 100.0
+        else:
+            years_after_stable = yr - stable_years
+            factor = (1 - annual_deg_after_pct / 100) ** years_after_stable
+            table[yr] = round(factor * 100, 4)
+    return table
+
+
+# ==============================================================================
+# BESS DEGRADATION (CSV-based — existing) + SIMPLE MODE (new)
+# ==============================================================================
+
 def apply_bess_degradation(bess_capacity_kwh, bess_power_kw, year, degradation_data):
-    """Apply BESS degradation to capacity and efficiencies."""
+    """Apply BESS degradation from CSV curve {year: {capacity, charge_eff, discharge_eff}}."""
     if year not in degradation_data:
         return bess_capacity_kwh, None, None
     year_data = degradation_data[year]
@@ -956,19 +1038,75 @@ def apply_bess_degradation(bess_capacity_kwh, bess_power_kw, year, degradation_d
     return degraded_capacity, charge_eff, discharge_eff
 
 
+def build_bess_simple_degradation_data(project_lifetime, annual_capacity_deg_pct,
+                                        charge_eff_pct, discharge_eff_pct,
+                                        annual_charge_eff_deg_pct=0.0,
+                                        annual_discharge_eff_deg_pct=0.0):
+    """Build a BESS degradation dict using simple annual degradation rates.
+
+    All three parameters (capacity, charge efficiency, discharge efficiency) degrade
+    independently using compound annual rates from their Year-1 baseline values.
+
+    Degradation formula (same for all three):
+        value_year_n = baseline * (1 - annual_rate)^(year - 1)
+        Year 1 = baseline (no degradation applied yet)
+
+    Args:
+        project_lifetime:             Total project years
+        annual_capacity_deg_pct:      Annual capacity degradation rate (e.g. 2.0 = 2%/yr)
+        charge_eff_pct:               Year-1 charging efficiency % (e.g. 90.0)
+        discharge_eff_pct:            Year-1 discharging efficiency % (e.g. 95.0)
+        annual_charge_eff_deg_pct:    Annual charging efficiency degradation rate (e.g. 0.5 = 0.5%/yr)
+                                      Set to 0.0 to hold charge efficiency constant.
+        annual_discharge_eff_deg_pct: Annual discharging efficiency degradation rate (e.g. 0.2 = 0.2%/yr)
+                                      Set to 0.0 to hold discharge efficiency constant.
+
+    Returns:
+        dict {year: {'capacity': %, 'charge_eff': %, 'discharge_eff': %}}
+        compatible with apply_bess_degradation()
+    """
+    data = {}
+    cap_rate = annual_capacity_deg_pct / 100
+    chg_rate = annual_charge_eff_deg_pct / 100
+    dis_rate = annual_discharge_eff_deg_pct / 100
+
+    for yr in range(1, project_lifetime + 1):
+        exponent = yr - 1  # Year 1 -> no degradation
+        capacity      = round(100.0          * (1 - cap_rate) ** exponent, 4)
+        charge_eff    = round(charge_eff_pct    * (1 - chg_rate) ** exponent, 4)
+        discharge_eff = round(discharge_eff_pct * (1 - dis_rate) ** exponent, 4)
+        data[yr] = {
+            'capacity':      max(0.0,  capacity),
+            'charge_eff':    max(50.0, charge_eff),    # floor at 50%
+            'discharge_eff': max(50.0, discharge_eff)  # floor at 50%
+        }
+    return data
+
+
 def run_multi_year_degradation_analysis(
     optimal_config, load_profile, pvsyst_profile, wind_profile,
     solar_config, wind_config, hydro_config, bess_config,
     project_lifetime=25,
     pv_degradation_type=None,
     pv_degradation_data=None,
+    wind_degradation_type=None,
+    wind_degradation_data=None,
+    hydro_degradation_table=None,
     bess_degradation_data=None,
     initial_soc_percent=50.0
 ):
-    """Run degradation analysis for all project years."""
+    """Run multi-year degradation analysis for all project years.
 
+    Supports independent degradation for all four components:
+      PV   : 'simple' (annual rate) or 'curve' (custom CSV)
+      Wind : 'simple' (annual rate) or 'curve' (custom CSV)
+      Hydro: year-by-year output factor table (dict {year: output_%})
+             Default table has 0% degradation for first 15 years, then gradual decline.
+      BESS : CSV curve dict OR simple annual rate dict
+             (built via build_bess_simple_degradation_data() before calling this fn)
+    """
     print("\n" + "="*70)
-    print("RUNNING 25-YEAR DEGRADATION ANALYSIS")
+    print(f"RUNNING {project_lifetime}-YEAR DEGRADATION ANALYSIS")
     print("="*70)
 
     yearly_results = []
@@ -976,18 +1114,27 @@ def run_multi_year_degradation_analysis(
     yearly_dispatch = {}
 
     baseline_bess_capacity = optimal_config.get('BESS_Capacity_kWh', 0)
+    baseline_hydro_capacity = optimal_config.get('Hydro_kW', 0)
     carry_soc_kwh = (initial_soc_percent / 100) * baseline_bess_capacity
 
+    # Build default hydro table if not provided but hydro is enabled
+    if hydro_degradation_table is None and baseline_hydro_capacity > 0:
+        hydro_degradation_table = build_default_hydro_deg_table(project_lifetime)
+
     print(f"\n  Starting SOC: {initial_soc_percent:.1f}% = {carry_soc_kwh:.1f} kWh")
+    print(f"  PV degradation:    {pv_degradation_type or 'none'}")
+    print(f"  Wind degradation:  {wind_degradation_type or 'none'}")
+    print(f"  Hydro degradation: {'table' if hydro_degradation_table else 'none'}")
+    print(f"  BESS degradation:  {'curve/simple' if bess_degradation_data else 'none'}")
 
     for year in range(1, project_lifetime + 1):
         if year % 5 == 0 or year == 1:
             print(f"  Processing Year {year}...")
 
-        # Apply PV degradation
+        # ── PV degradation ──
         if pv_degradation_type == 'simple' and pv_degradation_data is not None:
             pv_gen_degraded = apply_pv_degradation_simple(pvsyst_profile, year, pv_degradation_data)
-            pv_deg_pct = (1 - (1 - pv_degradation_data/100) ** (year-1)) * 100
+            pv_deg_pct = (1 - (1 - pv_degradation_data / 100) ** (year - 1)) * 100
         elif pv_degradation_type == 'curve' and pv_degradation_data is not None:
             pv_gen_degraded = apply_pv_degradation_curve(pvsyst_profile, year, pv_degradation_data)
             pv_deg_pct = pv_degradation_data.get(year, 0)
@@ -995,7 +1142,29 @@ def run_multi_year_degradation_analysis(
             pv_gen_degraded = pvsyst_profile
             pv_deg_pct = 0
 
-        # Apply BESS degradation
+        # ── Wind degradation ──
+        if wind_degradation_type == 'simple' and wind_degradation_data is not None:
+            wind_gen_degraded = apply_wind_degradation_simple(wind_profile, year, wind_degradation_data)
+            wind_deg_pct = (1 - (1 - wind_degradation_data / 100) ** (year - 1)) * 100
+        elif wind_degradation_type == 'curve' and wind_degradation_data is not None:
+            wind_gen_degraded = apply_wind_degradation_curve(wind_profile, year, wind_degradation_data)
+            wind_deg_pct = wind_degradation_data.get(year, 0)
+        else:
+            wind_gen_degraded = wind_profile
+            wind_deg_pct = 0
+
+        # ── Hydro degradation ──
+        if hydro_degradation_table is not None and baseline_hydro_capacity > 0:
+            hydro_cap_degraded = apply_hydro_degradation_table(
+                baseline_hydro_capacity, year, hydro_degradation_table
+            )
+            hydro_output_factor = hydro_degradation_table.get(year, 100.0)
+            hydro_deg_pct = 100.0 - hydro_output_factor
+        else:
+            hydro_cap_degraded = baseline_hydro_capacity
+            hydro_deg_pct = 0
+
+        # ── BESS degradation ──
         if bess_degradation_data is not None:
             bess_capacity_degraded, charge_eff_deg, discharge_eff_deg = apply_bess_degradation(
                 optimal_config['BESS_Capacity_kWh'], optimal_config['BESS_Power_kW'],
@@ -1011,9 +1180,10 @@ def run_multi_year_degradation_analysis(
             bess_config_degraded = bess_config
             bess_retention_pct = 100
 
+        # ── Dispatch simulation for this year ──
         dispatch_df = calculate_dispatch_with_hydro(
-            load_profile, pv_gen_degraded, wind_profile,
-            optimal_config['PV_kW'], optimal_config['Wind_kW'], optimal_config['Hydro_kW'],
+            load_profile, pv_gen_degraded, wind_gen_degraded,
+            optimal_config['PV_kW'], optimal_config['Wind_kW'], hydro_cap_degraded,
             optimal_config['BESS_Power_kW'], bess_capacity_degraded,
             solar_config, wind_config, hydro_config, bess_config_degraded,
             int(optimal_config.get('Hydro_Window_Start', 0)),
@@ -1033,17 +1203,19 @@ def run_multi_year_degradation_analysis(
 
         annual_metrics = {
             'Year': year,
-            'PV_Degradation_%': pv_deg_pct,
-            'BESS_Retention_%': bess_retention_pct,
-            'PV_Energy_MWh': dispatch_df['PV_Available_kW'].sum() / 1000,
-            'Wind_Energy_MWh': dispatch_df['Wind_Output_kW'].sum() / 1000,
-            'Hydro_Energy_MWh': dispatch_df['Hydro_Output_kW'].sum() / 1000,
-            'Load_MWh': total_load / 1000,
-            'Served_MWh': total_served / 1000,
-            'Unmet_MWh': total_unmet / 1000,
-            'Unmet_%': (total_unmet / total_load * 100) if total_load > 0 else 0,
+            'PV_Degradation_%':    pv_deg_pct,
+            'Wind_Degradation_%':  wind_deg_pct,
+            'Hydro_Degradation_%': hydro_deg_pct,
+            'BESS_Retention_%':    bess_retention_pct,
+            'PV_Energy_MWh':       dispatch_df['PV_Available_kW'].sum() / 1000,
+            'Wind_Energy_MWh':     dispatch_df['Wind_Output_kW'].sum() / 1000,
+            'Hydro_Energy_MWh':    dispatch_df['Hydro_Output_kW'].sum() / 1000,
+            'Load_MWh':            total_load / 1000,
+            'Served_MWh':          total_served / 1000,
+            'Unmet_MWh':           total_unmet / 1000,
+            'Unmet_%':             (total_unmet / total_load * 100) if total_load > 0 else 0,
             'BESS_Throughput_MWh': dispatch_df['BESS_Discharge_wieff_kW'].sum() / 1000,
-            'Curtailment_MWh': dispatch_df['Curtailment_kW'].sum() / 1000,
+            'Curtailment_MWh':     dispatch_df['Curtailment_kW'].sum() / 1000,
         }
 
         yearly_results.append(annual_metrics)
@@ -1054,13 +1226,22 @@ def run_multi_year_degradation_analysis(
 
     yearly_metrics_df = pd.DataFrame(yearly_results)
 
+    last_idx = len(yearly_metrics_df) - 1
     degradation_summary = {
-        'pv_degradation_year_1': yearly_metrics_df.loc[0, 'PV_Degradation_%'],
-        'pv_degradation_year_25': yearly_metrics_df.loc[24, 'PV_Degradation_%'],
-        'bess_retention_year_1': yearly_metrics_df.loc[0, 'BESS_Retention_%'],
-        'bess_retention_year_25': yearly_metrics_df.loc[24, 'BESS_Retention_%'],
-        'avg_unmet_pct': yearly_metrics_df['Unmet_%'].mean(),
-        'max_unmet_pct': yearly_metrics_df['Unmet_%'].max(),
+        'pv_degradation_year_1':    yearly_metrics_df.loc[0,        'PV_Degradation_%'],
+        'pv_degradation_year_last': yearly_metrics_df.loc[last_idx, 'PV_Degradation_%'],
+        'wind_degradation_year_1':  yearly_metrics_df.loc[0,        'Wind_Degradation_%'],
+        'wind_degradation_year_last': yearly_metrics_df.loc[last_idx,'Wind_Degradation_%'],
+        'hydro_degradation_year_1': yearly_metrics_df.loc[0,        'Hydro_Degradation_%'],
+        'hydro_degradation_year_last': yearly_metrics_df.loc[last_idx,'Hydro_Degradation_%'],
+        'bess_retention_year_1':    yearly_metrics_df.loc[0,        'BESS_Retention_%'],
+        'bess_retention_year_last': yearly_metrics_df.loc[last_idx, 'BESS_Retention_%'],
+        'avg_unmet_pct':            yearly_metrics_df['Unmet_%'].mean(),
+        'max_unmet_pct':            yearly_metrics_df['Unmet_%'].max(),
+        'total_energy_served_GWh':  yearly_metrics_df['Served_MWh'].sum() / 1000,
+        # keep old key for backward compat with display code
+        'pv_degradation_year_25':   yearly_metrics_df.loc[last_idx, 'PV_Degradation_%'],
+        'bess_retention_year_25':   yearly_metrics_df.loc[last_idx, 'BESS_Retention_%'],
         'total_energy_served_25yr_GWh': yearly_metrics_df['Served_MWh'].sum() / 1000,
     }
 
@@ -1069,10 +1250,11 @@ def run_multi_year_degradation_analysis(
     print("="*70)
 
     return {
-        'yearly_metrics': yearly_metrics_df,
+        'yearly_metrics':         yearly_metrics_df,
         'selected_year_dispatch': yearly_dispatch,
-        'degradation_summary': degradation_summary,
-        'optimal_config': optimal_config
+        'degradation_summary':    degradation_summary,
+        'optimal_config':         optimal_config,
+        'hydro_deg_table':        hydro_degradation_table,
     }
 
 
