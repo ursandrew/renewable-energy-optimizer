@@ -495,6 +495,193 @@ def calculate_npc_homer_style(pv_capacity, wind_capacity, hydro_capacity, bess_p
 
 
 # ==============================================================================
+# MANAGER'S LCOE — YEAR-BY-YEAR CASH FLOW METHOD
+# ==============================================================================
+
+def calculate_lcoe_cashflow_method(
+        # System sizing
+        pv_dc_mwp,          # PV installed capacity (MWp, DC)
+        pv_ac_mwac,         # PV AC export capacity (MWac)
+        wind_kw,            # Wind capacity (kW)  — used for both onshore/offshore
+        hydro_kw,           # Hydro capacity (kW)
+        bess_capacity_kwh,  # BESS energy capacity (kWh)
+
+        # Annual energy (MWh/yr) — from dispatch simulation
+        annual_energy_mwh,
+
+        # PV cost parameters
+        pv_capex_per_mwp,           # USD/MWp (DC)
+        pv_fixed_om_per_mwp_yr,     # USD/MWp-yr (escalates with inflation)
+        pv_inverter_bop_per_mwac,   # USD/MWac (one-off CAPEX at Year 0)
+
+        # Wind cost parameters
+        wind_capex_per_kw,          # USD/kW
+        wind_om_per_kw_yr,          # USD/kW-yr (escalates with inflation)
+
+        # Hydro cost parameters
+        hydro_capex_per_kw,         # USD/kW
+        hydro_om_per_kw_yr,         # USD/kW-yr (escalates with inflation)
+
+        # BESS cost parameters
+        bess_capex_per_kwh,         # USD/kWh
+        bess_om_per_kwh_yr,         # USD/kWh-yr (escalates with inflation)
+
+        # Financial parameters
+        nominal_discount_rate_pct,  # % (used directly — NOT converted to real rate)
+        inflation_rate_pct,         # % (used for O&M escalation index)
+        project_lifetime,           # years (integer)
+):
+    """
+    Calculate hybrid system LCOE using the year-by-year discounted cash flow method.
+
+    Methodology (as per manager's Excel model):
+
+    YEAR 0 (t=0):
+      - All CAPEX incurred upfront (discount factor = 1.0)
+      - No O&M in Year 0
+      - No energy generated in Year 0
+
+    YEARS 1 to N (t=1..N):
+      - No CAPEX (one-shot investment assumed)
+      - O&M costs ESCALATE with inflation: O&M_t = O&M_base * (1 + infl)^t
+      - Annual energy is discounted alongside costs
+
+    DISCOUNT FACTOR:  DF_t = 1 / (1 + r_nominal)^t
+    INFLATION INDEX:  II_t = (1 + inflation)^t
+
+    O&M per component per year:
+      O&M_hydro_t   = hydro_om_per_kw * hydro_kw        * II_t
+      O&M_wind_t    = wind_om_per_kw  * wind_kw          * II_t
+      O&M_pv_t      = pv_om_per_mwp  * pv_dc_mwp * 1000 * II_t  (note: MWp→kW)
+      O&M_bess_t    = bess_om_per_kwh * bess_capacity_kwh * II_t
+
+    TOTAL COST per year:
+      Year 0: sum of all CAPEX
+      Year t>0: sum of all O&M (escalated)
+
+    DISCOUNTED COST_t  = TotalCost_t * DF_t
+    DISCOUNTED ENERGY_t = AnnualEnergy_MWh * DF_t   (Year 0 energy = 0)
+
+    LCOE:
+      NPV_Costs  = sum(Discounted_Cost, t=0..N)
+      NPV_Energy = sum(Discounted_Energy, t=0..N)
+      LCOE_per_MWh = NPV_Costs / NPV_Energy
+      LCOE_per_kWh = LCOE_per_MWh / 1000
+
+    Returns:
+        dict with:
+          'cashflow_df'      : DataFrame with year-by-year breakdown
+          'npv_costs'        : Total discounted costs ($)
+          'npv_energy_mwh'   : Total discounted energy (MWh)
+          'lcoe_per_mwh'     : LCOE in $/MWh
+          'lcoe_per_kwh'     : LCOE in $/kWh
+          'total_capex'      : Sum of all CAPEX at Year 0 ($)
+          'capex_breakdown'  : Dict of individual CAPEX items ($)
+          'base_om_annual'   : Un-escalated O&M at Year 1 ($)
+    """
+    import pandas as pd
+
+    r    = nominal_discount_rate_pct / 100.0
+    infl = inflation_rate_pct        / 100.0
+    n    = int(project_lifetime)
+
+    # ── CAPEX (Year 0 only) ──────────────────────────────────────────────────
+    capex_pv         = pv_capex_per_mwp          * pv_dc_mwp           # MWp × $/MWp
+    capex_pv_inv_bop = pv_inverter_bop_per_mwac  * pv_ac_mwac          # MWac × $/MWac
+    capex_wind       = wind_capex_per_kw          * wind_kw             # kW × $/kW
+    capex_hydro      = hydro_capex_per_kw         * hydro_kw            # kW × $/kW
+    capex_bess       = bess_capex_per_kwh         * bess_capacity_kwh   # kWh × $/kWh
+
+    total_capex = capex_pv + capex_pv_inv_bop + capex_wind + capex_hydro + capex_bess
+
+    capex_breakdown = {
+        'PV (DC)':         capex_pv,
+        'PV Inverter/BoP': capex_pv_inv_bop,
+        'Wind':            capex_wind,
+        'Hydro':           capex_hydro,
+        'BESS':            capex_bess,
+        'Total':           total_capex,
+    }
+
+    # ── Base O&M (Year 1, before inflation escalation) ───────────────────────
+    # Note: PV O&M rate is $/MWp-yr, so multiply by DC capacity in MWp
+    base_om_pv    = pv_fixed_om_per_mwp_yr   * pv_dc_mwp              # MWp × $/MWp-yr
+    base_om_wind  = wind_om_per_kw_yr         * wind_kw               # kW × $/kW-yr
+    base_om_hydro = hydro_om_per_kw_yr        * hydro_kw              # kW × $/kW-yr
+    base_om_bess  = bess_om_per_kwh_yr        * bess_capacity_kwh     # kWh × $/kWh-yr
+    base_om_total = base_om_pv + base_om_wind + base_om_hydro + base_om_bess
+
+    # ── Year-by-year cash flow table ─────────────────────────────────────────
+    rows = []
+    for t in range(0, n + 1):
+        df_t   = 1.0 / (1 + r) ** t           # Discount factor
+        ii_t   = (1 + infl) ** t              # Inflation index
+
+        if t == 0:
+            # Year 0: all CAPEX, no O&M, no energy
+            om_pv_t    = 0.0
+            om_wind_t  = 0.0
+            om_hydro_t = 0.0
+            om_bess_t  = 0.0
+            om_total_t = 0.0
+            total_cost_t = total_capex
+            energy_t   = 0.0
+        else:
+            # Year t>0: O&M escalated, no CAPEX
+            om_pv_t    = pv_fixed_om_per_mwp_yr  * pv_dc_mwp          * ii_t
+            om_wind_t  = wind_om_per_kw_yr        * wind_kw            * ii_t
+            om_hydro_t = hydro_om_per_kw_yr       * hydro_kw           * ii_t
+            om_bess_t  = bess_om_per_kwh_yr       * bess_capacity_kwh  * ii_t
+            om_total_t = om_pv_t + om_wind_t + om_hydro_t + om_bess_t
+            total_cost_t = om_total_t
+            energy_t   = annual_energy_mwh
+
+        disc_cost_t   = total_cost_t * df_t
+        disc_energy_t = energy_t     * df_t
+
+        rows.append({
+            'Year':                t,
+            'Discount_Factor':     round(df_t,   6),
+            'Inflation_Index':     round(ii_t,   6),
+            'CAPEX_Total':         round(total_capex  if t == 0 else 0.0, 2),
+            'OM_PV':               round(om_pv_t,    2),
+            'OM_Wind':             round(om_wind_t,  2),
+            'OM_Hydro':            round(om_hydro_t, 2),
+            'OM_BESS':             round(om_bess_t,  2),
+            'OM_Total':            round(om_total_t, 2),
+            'Total_Cost':          round(total_cost_t,  2),
+            'Annual_Energy_MWh':   round(energy_t,   2),
+            'Discounted_Cost':     round(disc_cost_t,   2),
+            'Discounted_Energy_MWh': round(disc_energy_t, 2),
+        })
+
+    cashflow_df = pd.DataFrame(rows)
+
+    npv_costs      = cashflow_df['Discounted_Cost'].sum()
+    npv_energy_mwh = cashflow_df['Discounted_Energy_MWh'].sum()
+
+    lcoe_per_mwh = npv_costs / npv_energy_mwh if npv_energy_mwh > 0 else 0.0
+    lcoe_per_kwh = lcoe_per_mwh / 1000.0
+
+    return {
+        'cashflow_df':      cashflow_df,
+        'npv_costs':        npv_costs,
+        'npv_energy_mwh':   npv_energy_mwh,
+        'lcoe_per_mwh':     lcoe_per_mwh,
+        'lcoe_per_kwh':     lcoe_per_kwh,
+        'total_capex':      total_capex,
+        'capex_breakdown':  capex_breakdown,
+        'base_om_annual':   base_om_total,
+        'base_om_breakdown': {
+            'PV':   base_om_pv,
+            'Wind': base_om_wind,
+            'Hydro':base_om_hydro,
+            'BESS': base_om_bess,
+        },
+    }
+
+
+# ==============================================================================
 # GRID SEARCH OPTIMIZATION
 # ==============================================================================
 
