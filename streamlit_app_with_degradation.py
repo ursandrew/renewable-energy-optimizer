@@ -701,6 +701,74 @@ with st.sidebar:
             target_unmet_percent = st.number_input("Target Max Unmet Load (%)", value=5.0,
                 min_value=0.0, max_value=20.0, step=0.5, key="target_unmet")
 
+        st.markdown("---")
+        st.markdown("**📊 Cash Flow LCOE — Cost Overrides**")
+        st.caption(
+            "The cash flow LCOE method uses nominal costs per unit capacity. "
+            "These default to the values entered above but can be overridden here "
+            "for the economic analysis tab."
+        )
+
+        # PV
+        with st.expander("☀️ PV — Cash Flow Costs", expanded=False):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                cf_pv_capex_per_mwp = st.number_input(
+                    "PV CAPEX (USD/MWp)", value=float(pv_capex if enable_pv else 1000) * 1000,
+                    min_value=0.0, step=10000.0, key="cf_pv_capex",
+                    help="Capital cost per MWp of DC installed capacity")
+            with col2:
+                cf_pv_om_per_mwp = st.number_input(
+                    "PV Fixed O&M (USD/MWp-yr)", value=float(pv_opex if enable_pv else 10) * 1000,
+                    min_value=0.0, step=1000.0, key="cf_pv_om",
+                    help="Annual O&M per MWp (escalates with inflation)")
+            with col3:
+                cf_pv_inv_bop_per_mwac = st.number_input(
+                    "PV Inverter/BoP (USD/MWac)", value=50000.0,
+                    min_value=0.0, step=1000.0, key="cf_pv_inv",
+                    help="One-off inverter & Balance-of-Plant replacement cost per MWac at Year 0")
+            cf_dc_ac_ratio = st.number_input(
+                "DC/AC Ratio", value=1.5, min_value=1.0, max_value=2.0, step=0.05,
+                key="cf_dc_ac", help="Used to derive PV AC from PV DC (MWp) capacity")
+
+        # Wind
+        with st.expander("💨 Wind — Cash Flow Costs", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                cf_wind_capex_per_kw = st.number_input(
+                    "Wind CAPEX (USD/kW)", value=float(wind_capex if enable_wind else 1200),
+                    min_value=0.0, step=10.0, key="cf_wind_capex")
+            with col2:
+                cf_wind_om_per_kw = st.number_input(
+                    "Wind O&M (USD/kW-yr)", value=float(wind_opex if enable_wind else 15),
+                    min_value=0.0, step=1.0, key="cf_wind_om")
+
+        # Hydro
+        with st.expander("💧 Hydro — Cash Flow Costs", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                cf_hydro_capex_per_kw = st.number_input(
+                    "Hydro CAPEX (USD/kW)", value=float(hydro_capex if enable_hydro else 1500),
+                    min_value=0.0, step=10.0, key="cf_hydro_capex")
+            with col2:
+                cf_hydro_om_per_kw = st.number_input(
+                    "Hydro O&M (USD/kW-yr)", value=float(hydro_opex if enable_hydro else 20),
+                    min_value=0.0, step=1.0, key="cf_hydro_om")
+
+        # BESS
+        with st.expander("🔋 BESS — Cash Flow Costs", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                cf_bess_capex_per_kwh = st.number_input(
+                    "BESS CAPEX (USD/kWh)", value=float(bess_energy_capex if enable_bess else 300),
+                    min_value=0.0, step=10.0, key="cf_bess_capex",
+                    help="Capital cost per kWh of BESS energy capacity")
+            with col2:
+                cf_bess_om_per_kwh = st.number_input(
+                    "BESS Fixed O&M (USD/kWh-yr)", value=20.0,
+                    min_value=0.0, step=1.0, key="cf_bess_om",
+                    help="Annual O&M per kWh of BESS capacity (escalates with inflation)")
+
 
 # ==============================================================================
 # MAIN — RUN OPTIMIZATION
@@ -911,6 +979,34 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
                 )
                 progress_bar.progress(90)
 
+            # ── Cash Flow LCOE (Manager's Method) ──
+            status_text.text("📊 Calculating Cash Flow LCOE...")
+
+            # Derive PV AC from optimal DC capacity
+            pv_dc_mwp_opt  = optimal['PV_kW'] / 1000.0
+            pv_ac_mwac_opt = pv_dc_mwp_opt / cf_dc_ac_ratio
+
+            cf_lcoe_results = opt_module.calculate_lcoe_cashflow_method(
+                pv_dc_mwp          = pv_dc_mwp_opt,
+                pv_ac_mwac         = pv_ac_mwac_opt,
+                wind_kw            = optimal['Wind_kW'],
+                hydro_kw           = optimal['Hydro_kW'],
+                bess_capacity_kwh  = optimal['BESS_Capacity_kWh'],
+                annual_energy_mwh  = optimal['Total_Energy_Served_kWh'] / 1000.0,
+                pv_capex_per_mwp          = cf_pv_capex_per_mwp,
+                pv_fixed_om_per_mwp_yr    = cf_pv_om_per_mwp,
+                pv_inverter_bop_per_mwac  = cf_pv_inv_bop_per_mwac,
+                wind_capex_per_kw         = cf_wind_capex_per_kw,
+                wind_om_per_kw_yr         = cf_wind_om_per_kw,
+                hydro_capex_per_kw        = cf_hydro_capex_per_kw,
+                hydro_om_per_kw_yr        = cf_hydro_om_per_kw,
+                bess_capex_per_kwh        = cf_bess_capex_per_kwh,
+                bess_om_per_kwh_yr        = cf_bess_om_per_kwh,
+                nominal_discount_rate_pct = discount_rate,
+                inflation_rate_pct        = inflation_rate,
+                project_lifetime          = project_lifetime,
+            )
+
             # ── Store results ──
             st.session_state.results = {
                 'optimal_solution': optimal,
@@ -919,7 +1015,8 @@ if st.button("▶️ RUN OPTIMIZATION", type="primary", use_container_width=True
                 'config': config,
                 'degradation_enabled': use_degradation,
                 'electrical_metrics': electrical_metrics,
-                'npc_data': npc_data
+                'npc_data': npc_data,
+                'cf_lcoe': cf_lcoe_results,
             }
             if use_degradation:
                 st.session_state.results['degradation_analysis'] = degradation_results
@@ -950,13 +1047,14 @@ if st.session_state.optimization_complete and st.session_state.results is not No
     st.markdown("---")
     st.header("📊 Optimization Results")
 
-    tabs = ["📊 Summary", "💰 Cost & Performance"]
+    tabs = ["📊 Summary", "💰 Cost & Performance", "📈 Economic Analysis"]
     if results.get('degradation_enabled', False):
         tabs.append("🔬 Degradation")
     tab_objects = st.tabs(tabs)
     tab1 = tab_objects[0]
     tab2 = tab_objects[1]
-    tab3 = tab_objects[2] if results.get('degradation_enabled', False) else None
+    tab_econ = tab_objects[2]
+    tab3 = tab_objects[3] if results.get('degradation_enabled', False) else None
 
     # ── TAB 1: SUMMARY ────────────────────────────────────────────────────────
     with tab1:
@@ -1178,6 +1276,223 @@ if st.session_state.optimization_complete and st.session_state.results is not No
         if dispatch_fig:
             st.plotly_chart(dispatch_fig, use_container_width=True)
             st.caption("Representative day based on median PV production day")
+
+    # ── TAB ECON: ECONOMIC ANALYSIS (CASH FLOW LCOE) ─────────────────────────
+    with tab_econ:
+        st.header("📈 Economic Analysis — Cash Flow LCOE Method")
+        st.caption(
+            "LCOE calculated using year-by-year discounted cash flows. "
+            "CAPEX at Year 0, O&M escalated annually with inflation, "
+            "discounted at nominal discount rate. "
+            "Compare with the HOMER-style LCOE in the Cost & Performance tab."
+        )
+
+        cf = results.get('cf_lcoe', {})
+        if not cf:
+            st.warning("Cash Flow LCOE data not available. Re-run optimization.")
+        else:
+            # ── KPI Row ──
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("CF LCOE", f"${cf['lcoe_per_mwh']:.2f}/MWh",
+                    help="Cash flow method: NPV_Costs / NPV_Energy")
+            with col2:
+                st.metric("CF LCOE ($/kWh)", f"${cf['lcoe_per_kwh']:.5f}/kWh")
+            with col3:
+                st.metric("HOMER LCOE", f"${optimal['LCOE_per_kWh']*1000:.2f}/MWh",
+                    help="HOMER method: NPC × CRF / Annual_Energy")
+            with col4:
+                diff = cf['lcoe_per_mwh'] - optimal['LCOE_per_kWh'] * 1000
+                st.metric("Difference", f"${diff:+.2f}/MWh",
+                    delta=f"{diff/max(optimal['LCOE_per_kWh']*1000, 0.001)*100:+.1f}%",
+                    delta_color="off")
+
+            st.markdown("---")
+
+            # ── Key Financial Assumptions ──
+            st.subheader("⚙️ Financial Assumptions Used")
+            cfg = results['config']
+            col1, col2, col3, col4 = st.columns(4)
+            with col1: st.metric("Nominal Discount Rate", f"{cfg['discount_rate']*100:.1f}%")
+            with col2: st.metric("Inflation Rate",        f"{cfg['inflation_rate']*100:.1f}%")
+            with col3: st.metric("Project Lifetime",      f"{int(cfg['project_lifetime'])} years")
+            with col4:
+                st.metric("NPV Costs", f"${cf['npv_costs']/1e6:.2f}M")
+
+            st.markdown("---")
+
+            # ── CAPEX Breakdown ──
+            st.subheader("🏗️ Capital Expenditure Breakdown (Year 0)")
+            capex_bk = cf['capex_breakdown']
+            capex_items = {k: v for k, v in capex_bk.items() if k != 'Total' and v > 0}
+            col1, col2 = st.columns(2)
+            with col1:
+                capex_df = pd.DataFrame({
+                    'Component': list(capex_items.keys()),
+                    'CAPEX ($)': [f"${v:,.0f}" for v in capex_items.values()],
+                    'Share (%)': [f"{v/capex_bk['Total']*100:.1f}%" for v in capex_items.values()]
+                })
+                capex_df.loc[len(capex_df)] = ['TOTAL', f"${capex_bk['Total']:,.0f}", '100.0%']
+                st.dataframe(capex_df, use_container_width=True, hide_index=True)
+            with col2:
+                fig_capex = go.Figure(data=[go.Pie(
+                    labels=list(capex_items.keys()),
+                    values=list(capex_items.values()),
+                    hole=0.4,
+                    marker=dict(colors=['#FFDB5C','#FDB462','#80B1D3','#8DD3C7','#FB8072'])
+                )])
+                fig_capex.update_layout(title='CAPEX by Component', height=350,
+                    annotations=[dict(text='CAPEX', x=0.5, y=0.5, font_size=14, showarrow=False)])
+                st.plotly_chart(fig_capex, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Base O&M Breakdown ──
+            st.subheader("🔧 Base O&M Breakdown (Year 1, before inflation escalation)")
+            om_bk = cf['base_om_breakdown']
+            om_items = {k: v for k, v in om_bk.items() if v > 0}
+            col1, col2 = st.columns(2)
+            with col1:
+                om_total = cf['base_om_annual']
+                om_df = pd.DataFrame({
+                    'Component':   list(om_items.keys()),
+                    'Base O&M ($)': [f"${v:,.0f}" for v in om_items.values()],
+                    'Share (%)':   [f"{v/om_total*100:.1f}%" for v in om_items.values()]
+                })
+                om_df.loc[len(om_df)] = ['TOTAL', f"${om_total:,.0f}", '100.0%']
+                st.dataframe(om_df, use_container_width=True, hide_index=True)
+            with col2:
+                yr_last = int(cfg['project_lifetime'])
+                infl = cfg['inflation_rate']
+                om_yr_last = om_total * (1 + infl) ** yr_last
+                st.metric(f"Year 1 O&M (base)", f"${om_total*1e-6:.2f}M/yr")
+                st.metric(f"Year {yr_last} O&M (inflated)", f"${om_yr_last*1e-6:.2f}M/yr",
+                    delta=f"+{(om_yr_last/om_total - 1)*100:.1f}% from Year 1",
+                    delta_color="off")
+                inflation_multiplier = (1 + infl) ** yr_last
+                st.metric("Inflation Multiplier", f"{inflation_multiplier:.3f}×",
+                    help=f"(1 + {infl*100:.1f}%)^{yr_last} = {inflation_multiplier:.3f}")
+
+            st.markdown("---")
+
+            # ── Year-by-Year Cash Flow Chart ──
+            st.subheader("📊 Year-by-Year Discounted Cash Flows")
+            cf_df = cf['cashflow_df']
+
+            fig_cf = go.Figure()
+            # Discounted CAPEX bar at year 0
+            fig_cf.add_trace(go.Bar(
+                x=[0], y=[-cf_df.loc[0, 'Discounted_Cost'] / 1e6],
+                name='Discounted CAPEX (Year 0)',
+                marker_color='#C62828',
+                hovertemplate='Year 0<br>CAPEX: $%{customdata:.2f}M<extra></extra>',
+                customdata=[cf_df.loc[0, 'Discounted_Cost'] / 1e6]
+            ))
+            # Discounted O&M bars for years 1+
+            om_years = cf_df[cf_df['Year'] > 0]
+            fig_cf.add_trace(go.Bar(
+                x=om_years['Year'],
+                y=-om_years['Discounted_Cost'] / 1e6,
+                name='Discounted O&M',
+                marker_color='#F57C00',
+                hovertemplate='Year %{x}<br>Disc. O&M: $%{customdata:.2f}M<extra></extra>',
+                customdata=om_years['Discounted_Cost'] / 1e6
+            ))
+            # Discounted energy line on secondary axis
+            fig_cf.add_trace(go.Scatter(
+                x=cf_df['Year'], y=cf_df['Discounted_Energy_MWh'] / 1000,
+                name='Discounted Energy (GWh)', mode='lines+markers',
+                line=dict(color='#1976D2', width=2),
+                yaxis='y2',
+                hovertemplate='Year %{x}<br>Disc. Energy: %{y:.1f} GWh<extra></extra>'
+            ))
+            fig_cf.update_layout(
+                title='Discounted Cash Flows and Energy by Year',
+                xaxis_title='Year',
+                yaxis_title='Cost ($M, negative = outflow)',
+                yaxis2=dict(title='Discounted Energy (GWh)', overlaying='y',
+                            side='right', showgrid=False),
+                barmode='relative', height=450,
+                plot_bgcolor='white', paper_bgcolor='white', font=dict(color='#333333'),
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+            )
+            st.plotly_chart(fig_cf, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── LCOE Comparison ──
+            st.subheader("🔍 LCOE Method Comparison")
+            homer_lcoe = optimal['LCOE_per_kWh'] * 1000
+            cf_lcoe_val = cf['lcoe_per_mwh']
+            col1, col2 = st.columns(2)
+            with col1:
+                comp_df = pd.DataFrame({
+                    'Metric': [
+                        'LCOE ($/MWh)',
+                        'LCOE ($/kWh)',
+                        'Discount Approach',
+                        'O&M Treatment',
+                        'Replacement Costs',
+                        'Salvage Value',
+                        'Cash Flow Basis',
+                    ],
+                    'HOMER Method': [
+                        f"${homer_lcoe:.2f}",
+                        f"${homer_lcoe/1000:.5f}",
+                        'Real discount rate',
+                        'Constant (real terms)',
+                        'Modeled at lifetime intervals',
+                        'Included (linear depreciation)',
+                        'NPC × CRF / Annual Energy',
+                    ],
+                    'Cash Flow Method': [
+                        f"${cf_lcoe_val:.2f}",
+                        f"${cf_lcoe_val/1000:.5f}",
+                        'Nominal discount rate',
+                        'Escalates with inflation',
+                        'Not modeled (CAPEX at Y0 only)',
+                        'Not modeled',
+                        'NPV(Costs) / NPV(Energy)',
+                    ],
+                })
+                st.dataframe(comp_df, use_container_width=True, hide_index=True)
+            with col2:
+                fig_comp = go.Figure(data=[go.Bar(
+                    x=['HOMER Method', 'Cash Flow Method'],
+                    y=[homer_lcoe, cf_lcoe_val],
+                    marker_color=['#1976D2', '#2E7D32'],
+                    text=[f'${homer_lcoe:.2f}', f'${cf_lcoe_val:.2f}'],
+                    textposition='outside',
+                )])
+                fig_comp.update_layout(
+                    title='LCOE Comparison ($/MWh)',
+                    yaxis_title='LCOE ($/MWh)', height=380,
+                    showlegend=False,
+                    plot_bgcolor='white', paper_bgcolor='white', font=dict(color='#333333')
+                )
+                fig_comp.update_yaxes(gridcolor='#EEEEEE')
+                st.plotly_chart(fig_comp, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Full Cash Flow Table ──
+            st.subheader("📋 Full Year-by-Year Cash Flow Table")
+            display_cf = cf_df.copy()
+            display_cf['Total_Cost'] = display_cf['Total_Cost'].map('${:,.0f}'.format)
+            display_cf['Discounted_Cost'] = display_cf['Discounted_Cost'].map('${:,.0f}'.format)
+            display_cf['Annual_Energy_MWh'] = display_cf['Annual_Energy_MWh'].map('{:,.1f}'.format)
+            display_cf['Discounted_Energy_MWh'] = display_cf['Discounted_Energy_MWh'].map('{:,.1f}'.format)
+            display_cf['OM_PV']    = display_cf['OM_PV'].map('${:,.0f}'.format)
+            display_cf['OM_Wind']  = display_cf['OM_Wind'].map('${:,.0f}'.format)
+            display_cf['OM_Hydro'] = display_cf['OM_Hydro'].map('${:,.0f}'.format)
+            display_cf['OM_BESS']  = display_cf['OM_BESS'].map('${:,.0f}'.format)
+            st.dataframe(display_cf, use_container_width=True, hide_index=True)
+
+            # Summary row
+            col1, col2, col3 = st.columns(3)
+            with col1: st.metric("NPV of Costs",  f"${cf['npv_costs']:,.0f}")
+            with col2: st.metric("NPV of Energy", f"{cf['npv_energy_mwh']:,.1f} MWh")
+            with col3: st.metric("LCOE",          f"${cf['lcoe_per_mwh']:.4f}/MWh")
 
     # ── TAB 3: DEGRADATION ────────────────────────────────────────────────────
     if tab3 is not None:
