@@ -18,6 +18,10 @@ Features:
 
 FIXES:
 - Wind output bug fixed: wind_capacity > 0 check replaces missing 'enabled' flag
+- v4.2: generate_range_with_endpoint() now guards against step<=0 / start>=end,
+  which previously caused an INFINITE LOOP (and container OOM-kill / the
+  Streamlit Cloud "Oh no" page) whenever a component was disabled in the UI
+  (min=max=step=0.0), e.g. running PV+BESS only with Wind and Hydro unchecked.
 """
 
 import pandas as pd
@@ -706,6 +710,22 @@ def grid_search_optimize_hydro(config, grid_config, solar, wind, hydro, bess,
     print(f"  Real (HOMER): {real_rate*100:.4f}%")
 
     def generate_range_with_endpoint(start, end, step):
+        """Generate range from start to end with given step, always including end.
+
+        FIX (v4.2): guard against a degenerate/disabled range. When a component
+        is unchecked in the Streamlit sidebar, min/max/step are all set to 0.0.
+        With the old unconditional `while current <= end: current += step` loop,
+        step=0 meant `current` never advanced past `start`, so the condition
+        `0 <= 0` stayed true forever — an infinite loop that grew `values`
+        without bound until the process was OOM-killed (the generic
+        "Oh no. Error running app." page on Streamlit Cloud, with no traceback
+        ever logged). This previously only showed up when Wind AND Hydro were
+        both disabled (e.g. a PV+BESS-only run), since that's the case where a
+        step-0 range actually got hit.
+        """
+        if step <= 0 or start >= end:
+            return np.array([start])
+
         values = []
         current = start
         while current <= end:
@@ -1474,6 +1494,8 @@ def load_bess_degradation_from_csv(csv_path):
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("OPTIMIZATION MODULE - WITH DEGRADATION v4.1")
+    print("OPTIMIZATION MODULE - WITH DEGRADATION v4.2")
     print("Fix: Wind output now correctly uses wind_capacity > 0 check")
+    print("Fix: generate_range_with_endpoint() no longer infinite-loops on a")
+    print("     disabled component (start=end=step=0)")
     print("="*70)
